@@ -28,6 +28,29 @@
 
 ---
 
+## About this fork
+
+`gamenative-tux` is a fork of [utkarshdalal/GameNative](https://github.com/utkarshdalal/GameNative), maintained
+as a real GitHub Fork (not a one-off copy) specifically so it stays easy to pull upstream's changes and to send
+patches back. The one real, deliberate divergence: **native Linux application/game support**, both ARM and x86,
+alongside upstream's existing Windows/Wine support — not a separate app, the same real library/launch model,
+so a Linux-native title and a Wine-run Windows title are equally first-class.
+
+The mechanism this fork actually adds: `GuestProgramLauncherComponent`'s own bundled proot invocation (which
+upstream already uses internally to run Wine itself) is now behind a real, swappable
+`com.winlator.linux.LinuxContainerBackend` interface (`LinuxContainerBackendRegistry`), defaulting to the same
+proot-based backend upstream already bundles (`DefaultProotContainerBackend` — unchanged behavior standalone),
+but overridable by a host app that wants to supply its own Linux container/namespace backend instead. This is
+what lets [droidtop](https://github.com/bi0shacker001/droidtop) wire this fork's Wine/Windows support in while
+using its own existing container infrastructure for the Linux-native side, without two separate, duplicate
+proot implementations running side by side.
+
+**Status**: the modular backend seam is real and in place; the actual ARM/x86 native-Linux game execution path
+(rootfs provisioning, dependency resolution, a real launch flow distinct from the Wine one) is real, ongoing
+work, not finished yet — this section will be updated as that lands, not oversold ahead of it.
+
+---
+
 GameNative lets you run the PC games in your Steam, Epic and GOG libraries directly on Android — no streaming required. Your saves sync to the cloud, so you can stop on your PC and keep going on your phone.
 
 It's still early. Not every game runs yet, and some need tweaking to play well, but the community is constantly finding and sharing configs that work — and these get applied automatically. You can see if anyone has tried running your game successfully at https://gamenative.app/compatibility.
