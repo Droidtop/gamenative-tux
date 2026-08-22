@@ -1129,6 +1129,8 @@
     <string name="settings_interface_no_external_storage">No external storage detected</string>
     <string name="settings_interface_external_storage_subtitle">Save games to external storage</string>
     <string name="settings_interface_storage_volume_title">Storage volume</string>
+    <string name="settings_interface_prefer_linux_depots_title">Prefer native Linux version when available</string>
+    <string name="settings_interface_prefer_linux_depots_subtitle">Off by default: a Linux depot isn\'t always the better choice — some are just a Proton-wrapped Windows build, and some native ports run worse than the Windows version through Wine. Applies to new installs; already-installed games keep their current version.</string>
     <string name="settings_interface_download_server_title">Steam Download Server</string>
     <string name="settings_interface_restart_required_title">Restart Required</string>
 

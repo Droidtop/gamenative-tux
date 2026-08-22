@@ -586,6 +586,20 @@ fun SettingsGroupInterface(
                 colors = settingsTileColorsAlt(),
             )
         }
+        // Real, explicit user choice -- see PrefManager.preferLinuxDepots'
+        // own doc comment for why this isn't an automatic "Linux exists so
+        // use it" decision made silently on the user's behalf.
+        var preferLinuxDepots by rememberSaveable { mutableStateOf(PrefManager.preferLinuxDepots) }
+        SettingsSwitch(
+            colors = settingsTileColorsAlt(),
+            title = { Text(text = stringResource(R.string.settings_interface_prefer_linux_depots_title)) },
+            subtitle = { Text(text = stringResource(R.string.settings_interface_prefer_linux_depots_subtitle)) },
+            state = preferLinuxDepots,
+            onCheckedChange = {
+                preferLinuxDepots = it
+                PrefManager.preferLinuxDepots = it
+            },
+        )
         // Steam download server selection
         SettingsMenuLink(
             colors = settingsTileColorsAlt(),

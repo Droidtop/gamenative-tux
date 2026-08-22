@@ -1269,6 +1269,20 @@ object PrefManager {
             setPref(FETCH_STEAMGRIDDB_IMAGES, value)
         }
 
+    // Default false, deliberately: a game's Linux depot isn't always the
+    // better choice -- some are just a Proton-wrapped Windows build in
+    // disguise, and some native Linux ports are genuinely worse (buggier,
+    // slower) than running the Windows version through Wine/Box64. Real,
+    // explicit user opt-in, not a silent auto-detected "Linux exists so
+    // use it" decision -- see SteamService.getMainAppDepots' own real
+    // usage of this.
+    private val PREFER_LINUX_DEPOTS = booleanPreferencesKey("prefer_linux_depots")
+    var preferLinuxDepots: Boolean
+        get() = getPref(PREFER_LINUX_DEPOTS, false)
+        set(value) {
+            setPref(PREFER_LINUX_DEPOTS, value)
+        }
+
     private val EXTERNAL_STORAGE_PATH = stringPreferencesKey("external_storage_path")
     var externalStoragePath: String
         get() = getPref(EXTERNAL_STORAGE_PATH, "")

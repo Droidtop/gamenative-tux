@@ -905,6 +905,16 @@ class SteamService : Service(), IChallengeUrlChanged {
          * `false` is permissive and lets all architectures or Deck states through.
          * [eligibleDepots] passes both as `false` to skip preference checks
          * when computing the flags themselves.
+         *
+         * [preferLinux] is a real, deliberate platform decision (default
+         * `false`, so every pre-existing caller keeps its exact old
+         * Windows-only behavior): when `true`, step 2 below requires a real
+         * Linux-tagged depot ([DepotInfo.isLinuxCompatible]) instead of a
+         * Windows one. This is an either/or choice, never both -- passing
+         * `true` for an app with no real Linux depot at all would filter
+         * out everything, which is why callers must confirm a Linux depot
+         * actually exists first (see [getMainAppDepots]'s own real check)
+         * rather than passing this blindly.
          */
         fun filterForDownloadableDepots(
             depot: DepotInfo,
@@ -915,6 +925,7 @@ class SteamService : Service(), IChallengeUrlChanged {
             licensedDepotIds: Set<Int>? = null,
             hasSteamUnlockedBranch: Boolean = false,
             dlcAppIdsWithSingleDepots: Set<Int>? = null,
+            preferLinux: Boolean = false,
         ): Boolean {
             if (depot.manifests.isEmpty() && depot.encryptedManifests.isNotEmpty() && !hasSteamUnlockedBranch)
                 return false
@@ -924,9 +935,14 @@ class SteamService : Service(), IChallengeUrlChanged {
                 depot.sharedInstall
             if (!hasContent)
                 return false
-            // 2. Supported OS
-            if (!depot.isWindowsCompatible)
-                return false
+            // 2. Supported OS -- real platform choice, see preferLinux's own doc comment above.
+            if (preferLinux) {
+                if (!depot.isLinuxCompatible)
+                    return false
+            } else {
+                if (!depot.isWindowsCompatible)
+                    return false
+            }
             // 3. 64-bit or indeterminate
             // Arch selection: allow 64-bit and Unknown always.
             // Allow 32-bit only when no 64-bit depot exists.
@@ -988,12 +1004,14 @@ class SteamService : Service(), IChallengeUrlChanged {
             preferredLanguage: String,
             ownedDlc: Map<Int, DepotInfo>?,
             licensedDepotIds: Set<Int>?,
+            preferLinux: Boolean = false,
         ): Collection<DepotInfo> {
             val dlcAppIdsWithSingleDepots = getDlcAppIdsWithSingleDepot(depots)
             return depots.values.filter { depot ->
                 filterForDownloadableDepots(depot, prefer64Bit = false, preferNonDeckWindows = false, preferredLanguage,
                     ownedDlc, licensedDepotIds,
-                    dlcAppIdsWithSingleDepots = dlcAppIdsWithSingleDepots
+                    dlcAppIdsWithSingleDepots = dlcAppIdsWithSingleDepots,
+                    preferLinux = preferLinux,
                 )
             }
         }
@@ -1008,18 +1026,20 @@ class SteamService : Service(), IChallengeUrlChanged {
             ownedDlc: Map<Int, DepotInfo>?,
             licensedDepotIds: Set<Int>?,
             hasSteamUnlockedBranch: Boolean = false,
+            preferLinux: Boolean = false,
         ): Map<Int, DepotInfo> {
             val dlcAppIdsWithSingleDepots = getDlcAppIdsWithSingleDepot(depots)
             val effectiveLanguage = SteamUtils.effectiveDepotLanguage(
                 depots, preferredLanguage, ownedDlc, licensedDepotIds, hasSteamUnlockedBranch,
             )
-            val eligible = eligibleDepots(depots, effectiveLanguage, ownedDlc, licensedDepotIds)
+            val eligible = eligibleDepots(depots, effectiveLanguage, ownedDlc, licensedDepotIds, preferLinux)
             val has64Bit = eligible.any { it.osArch == OSArch.Arch64 }
-            val hasNonDeckWin = eligible.any { !it.steamDeck && it.isWindowsCompatible }
+            val hasNonDeckPreferred = eligible.any { !it.steamDeck && (if (preferLinux) it.isLinuxCompatible else it.isWindowsCompatible) }
             return depots.filter { (_, depot) ->
-                filterForDownloadableDepots(depot, has64Bit, hasNonDeckWin, effectiveLanguage,
+                filterForDownloadableDepots(depot, has64Bit, hasNonDeckPreferred, effectiveLanguage,
                     ownedDlc, licensedDepotIds,
-                    dlcAppIdsWithSingleDepots = dlcAppIdsWithSingleDepots
+                    dlcAppIdsWithSingleDepots = dlcAppIdsWithSingleDepots,
+                    preferLinux = preferLinux,
                 )
             }
         }
@@ -1047,7 +1067,21 @@ class SteamService : Service(), IChallengeUrlChanged {
                 }
             }
 
-            val baseDepots = resolveDownloadableDepots(appInfo.depots, containerLanguage, ownedDlc, licensedDepots, hasSteamUnlockedBranch)
+            // Real platform decision, made once here -- gated on the
+            // user's own real, explicit PrefManager.preferLinuxDepots
+            // toggle (default false), NOT auto-detected from "a Linux
+            // depot exists." A Linux depot isn't automatically the better
+            // choice: some are just a Proton-wrapped Windows build in
+            // disguise, some native ports are genuinely worse than
+            // running Windows through Wine/Box64 -- this is the user's
+            // call, not droidtop/gamenative-tux's to make silently.
+            // Either/or only, never both -- see filterForDownloadableDepots'
+            // preferLinux doc comment for why a blind OS-agnostic filter
+            // would double-download instead.
+            val preferLinux = PrefManager.preferLinuxDepots && appInfo.depots.values.any { it.isLinuxCompatible }
+            val baseDepots = resolveDownloadableDepots(
+                appInfo.depots, containerLanguage, ownedDlc, licensedDepots, hasSteamUnlockedBranch, preferLinux,
+            )
 
             // Find in the depots of mainApp, that if any of the depotID is actually belongs to another steam_app entry
             // override the dlcAppId to the corresponding app id
@@ -1085,11 +1119,18 @@ class SteamService : Service(), IChallengeUrlChanged {
 
             val map = getMainAppDepots(appId, preferredLanguage).toMutableMap()
 
+            // Same real platform decision as getMainAppDepots -- a DLC
+            // should follow the base app's own chosen platform, gated on
+            // the same user-controlled preference (see PrefManager.
+            // preferLinuxDepots' own doc comment for why this isn't
+            // auto-detected).
+            val preferLinux = PrefManager.preferLinuxDepots && appInfo.depots.values.any { it.isLinuxCompatible }
+
             // parent app's arch applies to DLC arch selection
             val mainLanguage = SteamUtils.effectiveDepotLanguage(
                 appInfo.depots, preferredLanguage, ownedDlc, licensedDepots, hasSteamUnlockedBranch,
             )
-            val has64Bit = eligibleDepots(appInfo.depots, mainLanguage, ownedDlc, licensedDepots)
+            val has64Bit = eligibleDepots(appInfo.depots, mainLanguage, ownedDlc, licensedDepots, preferLinux)
                 .any { it.osArch == OSArch.Arch64 }
 
             val indirectDlcApps = getDownloadableDlcAppsOf(appId).orEmpty()
@@ -1100,13 +1141,14 @@ class SteamService : Service(), IChallengeUrlChanged {
                 val dlcLanguage = SteamUtils.effectiveDepotLanguage(
                     dlcApp.depots, preferredLanguage, null, dlcLicensedDepots, hasSteamUnlockedBranch,
                 )
-                val dlcEligible = eligibleDepots(dlcApp.depots, dlcLanguage, null, dlcLicensedDepots)
-                val dlcHasNonDeckWin = dlcEligible.any { !it.steamDeck && it.isWindowsCompatible }
+                val dlcEligible = eligibleDepots(dlcApp.depots, dlcLanguage, null, dlcLicensedDepots, preferLinux)
+                val dlcHasNonDeckPreferred = dlcEligible.any { !it.steamDeck && (if (preferLinux) it.isLinuxCompatible else it.isWindowsCompatible) }
                 dlcApp.depots
                     .filter { (_, depot) ->
-                        filterForDownloadableDepots(depot, has64Bit, dlcHasNonDeckWin, dlcLanguage,
+                        filterForDownloadableDepots(depot, has64Bit, dlcHasNonDeckPreferred, dlcLanguage,
                             null, dlcLicensedDepots, hasSteamUnlockedBranch,
-                            dlcAppIdsWithSingleDepots = dlcAppIdsWithSingleDepots
+                            dlcAppIdsWithSingleDepots = dlcAppIdsWithSingleDepots,
+                            preferLinux = preferLinux,
                         )
                     }
                     .forEach { (depotId, depot) ->

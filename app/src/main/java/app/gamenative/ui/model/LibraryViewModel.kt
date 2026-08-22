@@ -763,7 +763,10 @@ class LibraryViewModel @Inject constructor(
                 }
                 // base-game size: ownedDlc=emptyMap excludes DLC depots
                 val licensedDepots = licensedDepotMap[item.id]
-                val resolved = SteamService.resolveDownloadableDepots(item.depots, "", emptyMap(), licensedDepots)
+                // Same real, user-controlled platform preference as SteamService.getMainAppDepots
+                // -- keeps the displayed size consistent with what actually gets downloaded.
+                val preferLinux = PrefManager.preferLinuxDepots && item.depots.values.any { it.isLinuxCompatible }
+                val resolved = SteamService.resolveDownloadableDepots(item.depots, "", emptyMap(), licensedDepots, preferLinux = preferLinux)
                 val totalSizeBytes = resolved.values.sumOf { depot ->
                     depot.manifests[installedBranch]?.size ?: depot.manifests.values.firstOrNull()?.size ?: 0L
                 }
