@@ -2415,6 +2415,46 @@ class SteamService : Service(), IChallengeUrlChanged {
             }
         }
 
+        /**
+         * Real native-Linux launch entries -- mirrors [getWindowsLaunchInfos]'s
+         * own established heuristic (per-entry `configOS`/`configArch` are
+         * unreliable, confirmed by that function's own comment; a real Linux
+         * launch entry just doesn't end in `.exe`, since Steam's Windows
+         * convention always names its own launch target with that
+         * extension). Doesn't by itself confirm a Linux DEPOT was actually
+         * installed -- see [hasInstalledLinuxExecutable] for that.
+         */
+        fun getLinuxLaunchInfos(appId: Int): List<LaunchInfo> {
+            return getAppInfoOf(appId)?.let { appInfo ->
+                appInfo.config.launch.filter { launchInfo ->
+                    launchInfo.executable.isNotEmpty() &&
+                        !launchInfo.executable.endsWith(".exe", ignoreCase = true)
+                }
+            }.orEmpty()
+        }
+
+        /**
+         * Resolves a real, already-installed native Linux executable for
+         * [appId], or null if none exists -- either because the app has no
+         * real Linux depot ([DepotInfo.isLinuxCompatible], the common case:
+         * most Steam games are Windows-only) or because a Linux launch entry
+         * exists but its file isn't actually present on disk yet (not
+         * downloaded, or only the Windows depot was fetched). Real
+         * filesystem check, not just manifest data -- an honest "can I
+         * actually run this right now" answer, not a hypothetical one.
+         */
+        fun hasInstalledLinuxExecutable(appId: Int): String? {
+            val appInfo = getAppInfoOf(appId) ?: return null
+            val hasLinuxDepot = appInfo.depots.values.any { it.isLinuxCompatible }
+            if (!hasLinuxDepot) return null
+
+            val installDirPath = getAppDirPath(appId)
+            return getLinuxLaunchInfos(appId).firstNotNullOfOrNull { launchInfo ->
+                val candidate = File(installDirPath, launchInfo.executable)
+                candidate.takeIf { it.isFile }?.absolutePath
+            }
+        }
+
         fun getWindowsLaunchInfos(appId: Int): List<LaunchInfo> {
             return getAppInfoOf(appId)?.let { appInfo ->
                 appInfo.config.launch.filter { launchInfo ->

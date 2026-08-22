@@ -31,4 +31,16 @@ data class DepotInfo(
     val isWindowsCompatible: Boolean
         get() = osList.contains(OS.windows) ||
             (!osList.contains(OS.linux) && !osList.contains(OS.macos))
+
+    /**
+     * Real Linux depot, explicitly tagged -- unlike [isWindowsCompatible]
+     * this is never true by omission, since an OS-untagged depot means
+     * "assume Windows" (Steam's own real convention), not "assume Linux."
+     * A genuinely native Linux depot needs no Wine/box64 translation for
+     * an ARM64-native binary at all -- see `LinuxProgramLauncherComponent`
+     * (`com.winlator.xenvironment.components`), the real launch path this
+     * fork exists for (see the repo README).
+     */
+    val isLinuxCompatible: Boolean
+        get() = osList.contains(OS.linux)
 }
