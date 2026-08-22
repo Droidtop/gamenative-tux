@@ -16,6 +16,8 @@ import com.winlator.core.WineInfo;
 import com.winlator.core.envvars.EnvVars;
 import com.winlator.core.ProcessHelper;
 import com.winlator.core.TarCompressorUtils;
+import com.winlator.linux.LinuxContainerBackendRegistry;
+import com.winlator.linux.LinuxExecConfig;
 import com.winlator.xconnector.UnixSocketConfig;
 import com.winlator.xenvironment.EnvironmentComponent;
 import com.winlator.xenvironment.ImageFs;
@@ -195,47 +197,20 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     public static int exec(Context context, String prootCmd) {
         return exec(context, false, new String[0], null, null, prootCmd, null);
     }
+    // Real Wine-specific guest env + the actual "run it inside a rootfs"
+    // call moved to the swappable com.winlator.linux backend (see
+    // LinuxContainerBackendRegistry) -- this method still owns building the
+    // Wine-specific env vars (TZ/HOME/PATH/LD_LIBRARY_PATH/etc.), which
+    // stays Wine-specific regardless of which backend actually runs the
+    // command.
     public static int exec(Context context, boolean proot32, String[] bindingPaths, EnvVars extraVars, Callback<Integer> terminationCallback, String prootCmd, File workingDir) {
         Log.d("GuestProgramLauncherComponent", "Executing guest program");
-        // Context context = environment.getContext();
-        // ImageFs imageFs = environment.getImageFs();
         ImageFs imageFs = ImageFs.find(context);
         File rootDir = imageFs.getRootDir();
-        File tmpDir = XEnvironment.getTmpDir(context);
-        String nativeLibraryDir = context.getApplicationInfo().nativeLibraryDir;
-        File nativeLibs = new File(nativeLibraryDir);
-        // Log.d("GuestProgramLauncherComponent", nativeLibraryDir + " exists: " + nativeLibs.exists());
-        // Log.d("GuestProgramLauncherComponent", nativeLibraryDir + " is directory: " + nativeLibs.isDirectory());
-        Log.d("GuestProgramLauncherComponent", nativeLibraryDir + " contains: " + Arrays.toString(Arrays.stream(nativeLibs.listFiles()).map(File::getName).toArray()));
-        // nativeLibraryDir = nativeLibraryDir.replace("arm64", "arm64-v8a");
-        // Log.d("GuestProgramLauncherComponent", nativeLibraryDir + " exists: " + (new File(nativeLibraryDir)).exists());
-        // Log.d("GuestProgramLauncherComponent", steamApiPath + " exists: " + new File(steamApiPath).exists());
-        // ImageFs fs = ImageFs.find(context);
-        // Path dllsDir = Paths.get(fs.getRootDir().getAbsolutePath(), "/usr/dlls");
-        // Path steamApiTargetPath = Paths.get(dllsDir.toString(), "steam_api.dll.so");
-        // Path steamApiTargetPath = Paths.get(fs.getLib64Dir().toString(), "libsteam_api.dll.so");
-        // try {
-        //     if (Files.exists(steamApiTargetPath)) {
-        //         Files.delete(steamApiTargetPath);
-        //     }
-        //     // Files.createDirectories(dllsDir);
-        //     Path steamApiPath = Paths.get(nativeLibraryDir, "libsteam_api.dll.so");
-        //     Files.copy(steamApiPath, steamApiTargetPath);
-        //     FileUtils.chmod(new File(steamApiTargetPath.toString()), 0771);
-        // } catch (IOException e) {
-        //     Log.e("GuestProgramLauncherComponent", "Failed to copy steam_api.dll.so to /usr/lib " + e);
-        // }
-
-        // PrefManager.init(context);
-        // boolean enableBox86_64Logs = PrefManager.getBoolean("enable_box86_64_logs", false);
 
         EnvVars envVars = new EnvVars();
-        // if (!wow64Mode) addBox86EnvVars(envVars, enableBox86_64Logs);
-        // addBox64EnvVars(envVars, enableBox86_64Logs);
-
         TimeZone androidTz = TimeZone.getDefault();
         String tzId = androidTz.getID();
-        // Log.d("GuestProgramLauncherComponent", "Android timezone: " + tzId);
 
         envVars.put("TZ", tzId);
         envVars.put("HOME", ImageFs.HOME_PATH);
@@ -252,42 +227,18 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             envVars.put("LD_PRELOAD", "libandroid-sysvshm.so");
         if (extraVars != null) envVars.putAll(extraVars);
 
-        boolean bindSHM = envVars.get("WINEESYNC").equals("1");
-
-        String command = nativeLibraryDir + "/libproot.so";
-        // Log.d("GuestProgramLauncherComponent", nativeLibraryDir + "/libproot.so exists: " + (new File(nativeLibraryDir + "/libproot.so")).exists());
-        command += " --kill-on-exit";
-        command += " --rootfs=" + rootDir;
-        command += " --cwd=" + ImageFs.HOME_PATH;
-        command += " --bind=/dev";
-
-        if (bindSHM) {
-            File shmDir = new File(rootDir, "/tmp/shm");
-            shmDir.mkdirs();
-            command += " --bind=" + shmDir.getAbsolutePath() + ":/dev/shm";
-        }
-
-        command += " --bind=/proc";
-        command += " --bind=/sys";
-
-        if (bindingPaths != null) {
-            for (String path : bindingPaths)
-                command += " --bind=\"" + (new File(path)).getAbsolutePath() + "\"";
-        }
-
-        // envVars.put("WINEDLLPATH", dllsDir.toString());
-        // envVars.put("WINEDLLOVERRIDES", "\"steam_api=n\"");
+        // Real ordering, kept exactly as upstream had it: bindShm reflects
+        // whatever WINEESYNC value the caller passed in via extraVars,
+        // checked BEFORE it gets forced to "0" below for the actual guest
+        // env -- see LinuxExecConfig.bindShm's own doc comment for why this
+        // can't just be re-derived from the final envVars inside the backend.
+        boolean bindShm = "1".equals(envVars.get("WINEESYNC"));
         envVars.put("WINEESYNC", "0");
 
-        command += " /usr/bin/env " + envVars.toEscapedString() + " " + prootCmd;
+        LinuxExecConfig config = new LinuxExecConfig(
+                rootDir, workingDir, prootCmd, bindingPaths, envVars, proot32, bindShm);
 
-        envVars.clear();
-        envVars.put("PROOT_TMP_DIR", tmpDir);
-        envVars.put("PROOT_LOADER", nativeLibraryDir + "/libproot-loader.so");
-        if (proot32) envVars.put("PROOT_LOADER_32", nativeLibraryDir + "/libproot-loader32.so");
-
-        // ProcessHelper.exec(nativeLibraryDir+"/libproot.so ulimit -a", envVars.toStringArray(), rootDir);
-        return ProcessHelper.exec(command, envVars.toStringArray(), workingDir != null ? workingDir : rootDir, (status) -> {
+        return LinuxContainerBackendRegistry.get().exec(context, config, (status) -> {
             Log.d("GuestProgramLauncherComponent", "Process terminated " + pid + " with status " + status);
             synchronized (lock) {
                 pid = -1;
