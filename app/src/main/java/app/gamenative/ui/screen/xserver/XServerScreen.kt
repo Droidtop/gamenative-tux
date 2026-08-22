@@ -190,6 +190,7 @@ import com.winlator.xenvironment.components.ALSAServerComponent
 import com.winlator.xenvironment.components.BionicProgramLauncherComponent
 import com.winlator.xenvironment.components.GlibcProgramLauncherComponent
 import com.winlator.xenvironment.components.GuestProgramLauncherComponent
+import com.winlator.xenvironment.components.LinuxProgramLauncherComponent
 import com.winlator.xenvironment.components.NetworkInfoUpdateComponent
 import com.winlator.xenvironment.components.PulseAudioComponent
 import com.winlator.xenvironment.components.SteamClientComponent
@@ -3669,6 +3670,118 @@ private fun shiftXEnvironmentToContext(
     return environment
 }
 
+/**
+ * The real native-Linux launch path -- no Wine, no WINEPREFIX, no
+ * WinHandler. [executablePath] is a real, already-verified-on-disk
+ * absolute path (see [SteamService.hasInstalledLinuxExecutable]), living
+ * under the app's own Steam install storage rather than inside
+ * [ImageFs]'s own rootfs -- [com.winlator.linux.DefaultProotContainerBackend]'s
+ * real `--bind=<path>` (single-arg form, binds a host path to the same
+ * absolute path inside the guest) is what makes that work, which is why
+ * the game's own real parent directory is passed as a binding path below,
+ * not just the executable file itself (a native Linux game almost always
+ * needs to read sibling data files, not just exec its own binary).
+ *
+ * Reuses the exact same real X server/audio/GPU-renderer component
+ * constructors [setupXEnvironment] uses for Wine (see that function's own
+ * doc comment for why this is a separate function rather than a branch
+ * threaded through it) -- a native Linux game renders through the same
+ * real X11 + VirGL/Vortek stack, it just doesn't need Wine's own
+ * WINEPREFIX/guest-launcher machinery on top.
+ */
+private fun setupNativeLinuxEnvironment(
+    context: Context,
+    executablePath: String,
+    xServerState: MutableState<XServerState>,
+    envVars: EnvVars,
+    container: Container,
+    xServer: XServer,
+    onGameLaunchError: ((String) -> Unit)? = null,
+): XEnvironment {
+    val imageFs = ImageFs.find(context)
+    val rootPath = imageFs.getRootDir().getPath()
+    FileUtils.clear(imageFs.getTmpDir())
+
+    val environment = XEnvironment(context, imageFs)
+    environment.addComponent(
+        SysVSharedMemoryComponent(
+            xServer,
+            UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.SYSVSHM_SERVER_PATH),
+        ),
+    )
+    environment.addComponent(XServerComponent(xServer, UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.XSERVER_PATH)))
+    environment.addComponent(NetworkInfoUpdateComponent())
+
+    if (xServerState.value.audioDriver == "alsa") {
+        envVars.put("ANDROID_ALSA_SERVER", rootPath + UnixSocketConfig.ALSA_SERVER_PATH)
+        envVars.put("ANDROID_ASERVER_USE_SHM", "true")
+        val options = ALSAClient.Options.fromKeyValueSet(null)
+        environment.addComponent(ALSAServerComponent(UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.ALSA_SERVER_PATH), options))
+    } else if (xServerState.value.audioDriver == "pulseaudio") {
+        envVars.put("PULSE_SERVER", rootPath + UnixSocketConfig.PULSE_SERVER_PATH)
+        environment.addComponent(
+            PulseAudioComponent(
+                UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.PULSE_SERVER_PATH),
+                container.pulseaudioLowLatency,
+            ),
+        )
+    }
+
+    if (xServerState.value.graphicsDriver == "virgl") {
+        environment.addComponent(
+            VirGLRendererComponent(
+                xServer,
+                UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.VIRGL_SERVER_PATH),
+            ),
+        )
+    } else if (xServerState.value.graphicsDriver == "vortek" || xServerState.value.graphicsDriver == "adreno" || xServerState.value.graphicsDriver == "sd-8-elite") {
+        val gcfg = KeyValueSet(container.getGraphicsDriverConfig())
+        val graphicsDriver = xServerState.value.graphicsDriver
+        if (graphicsDriver == "sd-8-elite" || graphicsDriver == "adreno") {
+            gcfg.put("adrenotoolsDriver", "vulkan.adreno.so")
+            container.setGraphicsDriverConfig(gcfg.toString())
+        }
+        val options2: VortekRendererComponent.Options? = VortekRendererComponent.Options.fromKeyValueSet(context, gcfg)
+        environment.addComponent(VortekRendererComponent(xServer, UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.VORTEK_SERVER_PATH), options2, context))
+    }
+
+    envVars.put("DISPLAY", ":0")
+
+    try {
+        environment.startEnvironmentComponents()
+    } catch (e: Exception) {
+        Timber.e(e, "Failed to start native Linux environment components, cleaning up")
+        try {
+            environment.stopEnvironmentComponents()
+        } catch (cleanupEx: Exception) {
+            Timber.e(cleanupEx, "Error during native Linux environment cleanup")
+        }
+        throw e
+    }
+
+    val gameDir = File(executablePath).parentFile
+    val terminationCallback = Callback<Int> { status ->
+        if (status != 0) {
+            Timber.e("Native Linux program terminated with status: $status")
+            onGameLaunchError?.invoke("Game terminated with error status: $status")
+        }
+        PluviaApp.events.emit(AndroidEvent.GuestProgramTerminated)
+    }
+
+    LinuxProgramLauncherComponent.exec(
+        context,
+        executablePath,
+        emptyArray<String>(),
+        arrayOf(gameDir?.absolutePath ?: executablePath),
+        envVars,
+        terminationCallback,
+        gameDir,
+    )
+
+    envVars.clear()
+    return environment
+}
+
 private fun setupXEnvironment(
     context: Context,
     appId: String,
@@ -3684,6 +3797,38 @@ private fun setupXEnvironment(
     onGameLaunchError: ((String) -> Unit)? = null,
     offline: Boolean = false
 ): XEnvironment {
+    // Real early return, before any of the Wine-specific setup below runs
+    // (WINEPREFIX, WinHandler, Glibc/BionicProgramLauncherComponent
+    // selection, Steam achievement watcher, proton-10 XAudio DLL fix -- all
+    // genuinely Wine-only, none of it applies to a native Linux binary).
+    // A native Linux game still needs the same X server/audio/GPU-renderer
+    // components (it renders through the same real X11 + VirGL/Vortek
+    // stack) -- setupNativeLinuxEnvironment reuses those exact component
+    // constructors, just swaps LinuxProgramLauncherComponent in for the
+    // guest launcher. See docs/coordination's own STATUS.md for why this
+    // is an early return rather than a branch threaded through the
+    // existing ~460 lines: zero risk to the real, working, primary Wine
+    // launch path this app exists for.
+    if (container != null) {
+        val gameSourceForNativeCheck = ContainerUtils.extractGameSourceFromContainerId(appId)
+        if (gameSourceForNativeCheck == GameSource.STEAM) {
+            val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
+            val nativeLinuxExecutable = gameId?.let { SteamService.hasInstalledLinuxExecutable(it) }
+            if (nativeLinuxExecutable != null) {
+                Timber.i("Real native Linux depot resolved for appId=$appId: $nativeLinuxExecutable -- skipping Wine entirely")
+                return setupNativeLinuxEnvironment(
+                    context = context,
+                    executablePath = nativeLinuxExecutable,
+                    xServerState = xServerState,
+                    envVars = envVars,
+                    container = container,
+                    xServer = xServer,
+                    onGameLaunchError = onGameLaunchError,
+                )
+            }
+        }
+    }
+
     ProcessHelper.hardKillStaleWineProcesses()
 
     val gameSource = ContainerUtils.extractGameSourceFromContainerId(appId)
