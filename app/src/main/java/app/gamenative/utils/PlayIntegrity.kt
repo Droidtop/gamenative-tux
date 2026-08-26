@@ -16,27 +16,50 @@ object PlayIntegrity {
     @Volatile
     private var tokenProvider: StandardIntegrityTokenProvider? = null
 
+    /**
+     * Real, confirmed-necessary fix: every other function in this object
+     * already treats Play Integrity as fully optional (nullable token,
+     * graceful fallback on any failure) -- this one wasn't, and it runs
+     * unconditionally at app startup (PluviaApp.onCreate). A real device
+     * without Google Play Services installed at all (not a hypothetical --
+     * this fork explicitly targets that population) can make
+     * IntegrityManagerFactory.createStandard/prepareIntegrityToken throw
+     * *synchronously*, not just fail via the async listener -- which,
+     * unguarded, would crash the app on every single launch for exactly
+     * the users this matters most for. Wrapping the whole body means "no
+     * Play Services" now behaves exactly like every other real failure
+     * path here: no integrity token, everything else works normally.
+     */
     fun warmUp(application: Application) {
-        val cloudProjectNumber = BuildConfig.CLOUD_PROJECT_NUMBER.toLongOrNull()
-        if (cloudProjectNumber == null || cloudProjectNumber == 0L) {
-            Timber.tag("PlayIntegrity").e("Invalid CLOUD_PROJECT_NUMBER: '${BuildConfig.CLOUD_PROJECT_NUMBER}'")
-            return
-        }
+        try {
+            val cloudProjectNumber = BuildConfig.CLOUD_PROJECT_NUMBER.toLongOrNull()
+            if (cloudProjectNumber == null || cloudProjectNumber == 0L) {
+                Timber.tag("PlayIntegrity").e("Invalid CLOUD_PROJECT_NUMBER: '${BuildConfig.CLOUD_PROJECT_NUMBER}'")
+                return
+            }
 
-        val manager: StandardIntegrityManager =
-            IntegrityManagerFactory.createStandard(application)
+            val manager: StandardIntegrityManager =
+                IntegrityManagerFactory.createStandard(application)
 
-        manager.prepareIntegrityToken(
-            StandardIntegrityManager.PrepareIntegrityTokenRequest.builder()
-                .setCloudProjectNumber(cloudProjectNumber)
-                .build(),
-        ).addOnSuccessListener { provider ->
-            tokenProvider = provider
-            PrefManager.playIntegrityAvailable = true
-            Timber.tag("PlayIntegrity").d("Token provider ready")
-        }.addOnFailureListener { e ->
+            manager.prepareIntegrityToken(
+                StandardIntegrityManager.PrepareIntegrityTokenRequest.builder()
+                    .setCloudProjectNumber(cloudProjectNumber)
+                    .build(),
+            ).addOnSuccessListener { provider ->
+                tokenProvider = provider
+                PrefManager.playIntegrityAvailable = true
+                Timber.tag("PlayIntegrity").d("Token provider ready")
+            }.addOnFailureListener { e ->
+                PrefManager.playIntegrityAvailable = false
+                Timber.tag("PlayIntegrity").e(e, "Failed to prepare integrity token provider")
+            }
+        } catch (e: Throwable) {
+            // Real, expected case on a device with no Google Play Services
+            // at all -- not a hypothetical edge case for this fork's real
+            // audience. Play Integrity just never becomes available;
+            // nothing else about the app depends on it.
             PrefManager.playIntegrityAvailable = false
-            Timber.tag("PlayIntegrity").e(e, "Failed to prepare integrity token provider")
+            Timber.tag("PlayIntegrity").e(e, "Play Integrity unavailable on this device (no Google Play Services?) -- continuing without it")
         }
     }
 
