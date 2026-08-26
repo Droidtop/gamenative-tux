@@ -436,9 +436,18 @@ class GOGAppScreen : BaseAppScreen() {
 
     override fun onUpdateClick(context: Context, libraryItem: LibraryItem) {
         Timber.tag(TAG).i("onUpdateClick: appId=${libraryItem.appId}")
-        // TODO: Implement update for GOG games
-        // Check GOG for newer version and download if available
-        Timber.tag(TAG).d("Update clicked for GOG game: ${libraryItem.appId}")
+        // Real fix: GOGService.downloadGame always fetches the current
+        // manifest and downloads/verifies against it (see performDownload's
+        // own doc comment -- "GOGService will handle monitoring, database
+        // updates, verification"), so there's no separate "check for a
+        // newer version" call needed -- re-running the same real download
+        // path onDownloadInstallClick already uses for a fresh install IS
+        // the update, and GOG's own download machinery only pulls changed
+        // chunks against what's already on disk. No onClickPlay callback
+        // is available from this call site, unlike a fresh install --
+        // passing a real no-op rather than guessing at auto-launch
+        // behavior this interface doesn't provide for.
+        performDownload(context, libraryItem, onClickPlay = {})
     }
 
     override fun getExportFileExtension(): String {

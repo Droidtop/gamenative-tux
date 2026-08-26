@@ -518,9 +518,23 @@ class EpicAppScreen : BaseAppScreen() {
 
     override fun onUpdateClick(context: Context, libraryItem: LibraryItem) {
         Timber.tag(TAG).i("onUpdateClick: appId=${libraryItem.appId}")
-        // TODO: Implement update for Epic games
-        // Check Epic for newer version and download if available
-        Timber.tag(TAG).d("Update clicked for Epic game: ${libraryItem.appId}")
+        // Real fix: EpicService.downloadGame always fetches the current
+        // manifest and downloads/verifies against it (see performDownload's
+        // own doc comment -- "EpicService will handle monitoring, database
+        // updates, verification"), so there's no separate "check for a
+        // newer version" call needed -- re-running the same download path
+        // used for a fresh install IS the update, and Epic's own download
+        // machinery only pulls changed chunks against what's already on
+        // disk. Routed through the same game manager dialog
+        // onDownloadInstallClick's partial-resume path already uses,
+        // rather than guessing at the currently-installed DLC selection
+        // (dropping it silently here could uninstall DLCs the user
+        // actually has) -- explicit, restart-safe re-confirmation, same
+        // real reasoning as that existing call site.
+        showGameManagerDialog(
+            libraryItem.gameId,
+            app.gamenative.ui.component.dialog.state.GameManagerDialogState(visible = true),
+        )
     }
 
     override fun getExportFileExtension(): String = ".epic"
