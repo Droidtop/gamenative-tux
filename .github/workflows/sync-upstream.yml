@@ -1,0 +1,57 @@
+name: Sync upstream
+
+# Real, daily upstream sync -- keeps this fork's master merged with
+# utkarshdalal/GameNative's own master, so the real native-Linux work
+# this fork adds (see README) doesn't silently drift out of date with
+# upstream's own real fixes/driver updates.
+#
+# Uses a real git merge (not rebase, not a hard reset) -- if upstream and
+# this fork's own commits genuinely conflict, the merge step fails the
+# job outright rather than force-resolving or discarding anything; that
+# needs a real person to look at it.
+#
+# Real, known limitation: this pushes using the default GITHUB_TOKEN,
+# which GitHub deliberately does NOT let trigger other workflow runs (an
+# intentional anti-recursion rule) -- so "Push build check"/"Android CI"
+# won't auto-fire off THIS workflow's own push. To get that, add a real
+# Personal Access Token as a repo secret (e.g. SYNC_PAT) and swap the
+# checkout/push steps below to use it instead of GITHUB_TOKEN.
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/utkarshdalal/GameNative.git
+
+      - name: Fetch upstream
+        run: git fetch upstream master
+
+      - name: Configure commit identity for the merge commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge upstream/master
+        run: git merge upstream/master --no-edit
+
+      - name: Push if there's anything new
+        run: |
+          if git diff --quiet origin/master HEAD; then
+            echo "Already up to date with upstream -- nothing to push."
+          else
+            git push origin HEAD:master
+          fi
