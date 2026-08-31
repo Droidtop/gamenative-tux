@@ -198,7 +198,7 @@ open class PluviaApp : SplitCompatApplication() {
 
         private fun migrateGogAmazonPaths(host: Application) {
             val bootstrapDaos = dagger.hilt.android.EntryPointAccessors.fromApplication(
-                app,
+                host,
                 PluviaBootstrapEntryPoint::class.java,
             )
             val gogGameDao = bootstrapDaos.gogGameDao()
