@@ -1,10 +1,12 @@
 name: Push build check
 
-# The real, inherited pluvia-pr-check.yml only triggers on pull_request --
-# this fork commits straight to master (no PR workflow), so nothing
-# actually verified those commits build until now. Same real steps
-# pluvia-pr-check.yml already uses (dummy PostHog credentials, the same
-# unit-test targets), just triggered on push instead.
+# The fork's one and only CI: this fork commits straight to master, so
+# every push gets verified here, and the same run publishes installable
+# debug APK artifacts for both flavors. The inherited upstream workflows
+# (Android CI signed releases, ad-hoc builds, tagged prereleases, the
+# pull_request check) were deleted -- they depended on upstream's own
+# keystore/Discord/analytics secrets and could never succeed in this
+# fork, and everything the fork needs from CI happens right here.
 
 on:
   push:
@@ -40,8 +42,20 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Assemble debug (legacy flavor)
-        run: ./gradlew :app:assembleLegacyDebug --stacktrace
+      - name: Assemble debug (legacy and modern flavors)
+        run: ./gradlew :app:assembleLegacyDebug :app:assembleModernDebug --stacktrace
 
       - name: Run unit tests
         run: ./gradlew :app:testLegacyDebugUnitTest :app:testModernDebugUnitTest --stacktrace
+
+      - name: Upload legacy debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: gamenative-tux-legacy-debug
+          path: app/build/outputs/apk/legacy/debug/*.apk
+
+      - name: Upload modern debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: gamenative-tux-modern-debug
+          path: app/build/outputs/apk/modern/debug/*.apk

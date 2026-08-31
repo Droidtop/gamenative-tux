@@ -95,16 +95,10 @@ object GameCompatibilityService {
             val bodyString = requestBody.toString()
             val body = bodyString.toRequestBody(mediaType)
 
-            val integrityToken = PlayIntegrity.requestToken(bodyString.toByteArray())
-
             val requestBuilder = Request.Builder()
                 .url(API_BASE_URL)
                 .post(body)
-                .header("Content-Type", "application/json")
-            if (integrityToken != null) {
-                requestBuilder.header("X-Integrity-Token", integrityToken)
-            }
-            val request = requestBuilder.build()
+                .header("Content-Type", "application/json")            val request = requestBuilder.build()
 
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {

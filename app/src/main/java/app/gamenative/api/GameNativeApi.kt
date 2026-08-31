@@ -2,7 +2,6 @@ package app.gamenative.api
 
 import app.gamenative.BuildConfig
 import app.gamenative.utils.Net
-import app.gamenative.utils.PlayIntegrity
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -49,16 +48,10 @@ object GameNativeApi {
         val bodyString = body.toString()
         val requestBody = bodyString.toRequestBody(mediaType)
 
-        val integrityToken = PlayIntegrity.requestToken(bodyString.toByteArray())
-
         val builder = Request.Builder()
             .url(url)
             .post(requestBody)
             .header("Content-Type", "application/json")
-
-        if (integrityToken != null) {
-            builder.header("X-Integrity-Token", integrityToken)
-        }
 
         return builder.build()
     }

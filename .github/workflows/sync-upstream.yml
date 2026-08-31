@@ -12,7 +12,7 @@ name: Sync upstream
 #
 # Real, known limitation: this pushes using the default GITHUB_TOKEN,
 # which GitHub deliberately does NOT let trigger other workflow runs (an
-# intentional anti-recursion rule) -- so "Push build check"/"Android CI"
+# intentional anti-recursion rule) -- so "Push build check"
 # won't auto-fire off THIS workflow's own push. To get that, add a real
 # Personal Access Token as a repo secret (e.g. SYNC_PAT) and swap the
 # checkout/push steps below to use it instead of GITHUB_TOKEN.
@@ -47,6 +47,25 @@ jobs:
 
       - name: Merge upstream/master
         run: git merge upstream/master --no-edit
+
+      # This fork deliberately removed Google Play Integrity (and the
+      # upstream-only signed-release workflows that depend on upstream's
+      # own secrets). A merge conflict already catches upstream edits to
+      # files we changed or deleted, but upstream can reintroduce the
+      # same things in NEW files, which merges cleanly -- so fail the
+      # sync here instead of silently pushing them back into the fork.
+      - name: Refuse to sync removed-by-policy code back in
+        run: |
+          if grep -rn "PlayIntegrity\|play\.core\.integrity\|IntegrityManager\|CLOUD_PROJECT_NUMBER" app/src app/build.gradle.kts gradle/libs.versions.toml; then
+            echo "::error::Upstream merge reintroduced Google Play Integrity. Resolve by hand (rip it out again), then push."
+            exit 1
+          fi
+          for f in app-release-signed.yml adhoc-signed-build.yml tagged-release.yml pluvia-pr-check.yml; do
+            if [ -e ".github/workflows/$f" ]; then
+              echo "::error::Upstream merge restored removed workflow $f. Delete it again by hand, then push."
+              exit 1
+            fi
+          done
 
       - name: Push if there's anything new
         run: |
