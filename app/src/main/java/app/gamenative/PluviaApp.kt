@@ -1,5 +1,6 @@
 package app.gamenative
 
+import android.app.Application
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.StrictMode
@@ -23,7 +24,6 @@ import app.gamenative.utils.ContainerMigrator
 import app.gamenative.utils.IntentLaunchManager
 import app.gamenative.utils.downloader.ContainerFilesDownloader
 import java.io.File
-import javax.inject.Inject
 import kotlinx.coroutines.runBlocking
 import com.google.android.play.core.splitcompat.SplitCompatApplication
 import com.posthog.PersonProfiles
@@ -55,14 +55,33 @@ typealias NavChangedListener = NavController.OnDestinationChangedListener
 // @HiltAndroidApp application instead.
 open class PluviaApp : SplitCompatApplication() {
 
-    @Inject lateinit var gogGameDao: GOGGameDao
-    @Inject lateinit var amazonGameDao: AmazonGameDao
-
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
-        instance = this
+        bootstrap(this)
+    }
+
+
+    companion object {
+        @JvmField
+        val events: EventDispatcher = EventDispatcher()
+
+        private val bootstrapScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        /**
+         * The whole process bootstrap, callable from ANY Application: a
+         * library consumer (droidtop) supplies its own Hilt application
+         * and calls this from onCreate; gamenative's own [PluviaApp]
+         * delegates here too, so there is exactly one init path.
+         * [installCrashHandler] lets a host that already owns crash
+         * reporting keep its handler.
+         */
+        @JvmStatic
+        @JvmOverloads
+        fun bootstrap(app: Application, installCrashHandler: Boolean = true) {
+            if (::instance.isInitialized) return
+            instance = app
+
 
         preloadSystemLibraries()
 
@@ -80,34 +99,36 @@ open class PluviaApp : SplitCompatApplication() {
             Timber.plant(ReleaseTree())
         }
 
-        NetworkMonitor.init(this)
+        NetworkMonitor.init(app)
 
         // Init our custom crash handler.
-        CrashHandler.initialize(this)
+        if (installCrashHandler) {
+            CrashHandler.initialize(app)
+        }
 
         // Init our datastore preferences.
-        PrefManager.init(this)
-        NexusAuthManager.initialize(this)
-        FrontendSyncManager.init(this)
+        PrefManager.init(app)
+        NexusAuthManager.initialize(app)
+        FrontendSyncManager.init(app)
 
         // Initialize GOGConstants
-        app.gamenative.service.gog.GOGConstants.init(this)
+        app.gamenative.service.gog.GOGConstants.init(app)
 
-        DownloadService.populateDownloadService(this)
+        DownloadService.populateDownloadService(app)
 
-        migrateGogAmazonPaths()
+        migrateGogAmazonPaths(app)
 
-        appScope.launch {
+        bootstrapScope.launch {
             ContainerMigrator.migrateLegacyContainersIfNeeded(
-                context = applicationContext,
+                context = app,
                 onProgressUpdate = null,
                 onComplete = null
             )
         }
 
         // Preload all container files in the background
-        appScope.launch {
-            ContainerFilesDownloader.preloadAllContainerFiles(applicationContext)
+        bootstrapScope.launch {
+            ContainerFilesDownloader.preloadAllContainerFiles(app)
         }
 
         // Clear any stale temporary config overrides from previous app sessions
@@ -126,7 +147,7 @@ open class PluviaApp : SplitCompatApplication() {
             /* turn every event into an identified one */
             personProfiles = PersonProfiles.ALWAYS
         }
-        PostHogAndroid.setup(this, postHogConfig)
+        PostHogAndroid.setup(app, postHogConfig)
         com.posthog.PostHog.register("build_flavor", BuildConfig.FLAVOR)
 
         if (PrefManager.usageAnalyticsEnabled) {
@@ -138,80 +159,83 @@ open class PluviaApp : SplitCompatApplication() {
             )
         }
 
-        PowerManager.initialize(this)
-    }
-
-    /**
-     * One-time migration: moves GOG/Amazon game directories from
-     * {filesDir}/ to {dataDir}/ to match Steam/Epic, and updates DB paths.
-     */
-    private fun migrateGogAmazonPaths() {
-        if (PrefManager.gogAmazonPathMigrated) return
-
-        val dataDir = dataDir.path
-        val filesDir = filesDir.absolutePath
-        Timber.i("[Migration] Migrating GOG/Amazon install paths from $filesDir to $dataDir")
-
-        val migrations = listOf(
-            File(filesDir, "GOG") to File(dataDir, "GOG"),
-            File(filesDir, "Amazon") to File(dataDir, "Amazon"),
-        )
-
-        for ((oldDir, newDir) in migrations) {
-            if (!oldDir.exists()) continue
-            if (newDir.exists()) {
-                Timber.w("[Migration] Target already exists, skipping rename: ${newDir.path}")
-                continue
-            }
-            val renamed = oldDir.renameTo(newDir)
-            if (renamed) {
-                Timber.i("[Migration] Renamed ${oldDir.path} -> ${newDir.path}")
-            } else {
-                Timber.w("[Migration] Failed to rename ${oldDir.path} -> ${newDir.path}")
-            }
+        PowerManager.initialize(app)
         }
 
-        val oldPrefix = "$filesDir/"
-        val newPrefix = "$dataDir/"
+        /**
+         * One-time migration: moves GOG/Amazon game directories from
+         * {filesDir}/ to {dataDir}/ to match Steam/Epic, and updates DB paths.
+         */
+        private fun migrateGogAmazonPaths(app: Application) {
+            val bootstrapDaos = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                app,
+                PluviaBootstrapEntryPoint::class.java,
+            )
+            val gogGameDao = bootstrapDaos.gogGameDao()
+            val amazonGameDao = bootstrapDaos.amazonGameDao()
+            if (PrefManager.gogAmazonPathMigrated) return
 
-        runBlocking(Dispatchers.IO) {
-            try {
-                val gogGames = gogGameDao.getAllAsList()
-                for (game in gogGames) {
-                    if (game.installPath.isNotEmpty() && game.installPath.contains(oldPrefix)) {
-                        val updated = game.copy(installPath = game.installPath.replace(oldPrefix, newPrefix))
-                        gogGameDao.update(updated)
-                    }
+            val dataDir = app.dataDir.path
+            val filesDir = app.filesDir.absolutePath
+            Timber.i("[Migration] Migrating GOG/Amazon install paths from $filesDir to $dataDir")
+
+            val migrations = listOf(
+                File(filesDir, "GOG") to File(dataDir, "GOG"),
+                File(filesDir, "Amazon") to File(dataDir, "Amazon"),
+            )
+
+            for ((oldDir, newDir) in migrations) {
+                if (!oldDir.exists()) continue
+                if (newDir.exists()) {
+                    Timber.w("[Migration] Target already exists, skipping rename: ${newDir.path}")
+                    continue
                 }
-                Timber.i("[Migration] Updated ${gogGames.count { it.installPath.contains(oldPrefix) }} GOG install paths")
-            } catch (e: Exception) {
-                Timber.e(e, "[Migration] Failed to update GOG DB paths")
+                val renamed = oldDir.renameTo(newDir)
+                if (renamed) {
+                    Timber.i("[Migration] Renamed ${oldDir.path} -> ${newDir.path}")
+                } else {
+                    Timber.w("[Migration] Failed to rename ${oldDir.path} -> ${newDir.path}")
+                }
             }
 
-            try {
-                val amazonGames = amazonGameDao.getAllAsList()
-                for (game in amazonGames) {
-                    if (game.installPath.isNotEmpty() && game.installPath.contains(oldPrefix)) {
-                        val newPath = game.installPath.replace(oldPrefix, newPrefix)
-                        amazonGameDao.markAsInstalled(game.productId, newPath, game.installSize, game.versionId)
+            val oldPrefix = "$filesDir/"
+            val newPrefix = "$dataDir/"
+
+            runBlocking(Dispatchers.IO) {
+                try {
+                    val gogGames = gogGameDao.getAllAsList()
+                    for (game in gogGames) {
+                        if (game.installPath.isNotEmpty() && game.installPath.contains(oldPrefix)) {
+                            val updated = game.copy(installPath = game.installPath.replace(oldPrefix, newPrefix))
+                            gogGameDao.update(updated)
+                        }
                     }
+                    Timber.i("[Migration] Updated ${gogGames.count { it.installPath.contains(oldPrefix) }} GOG install paths")
+                } catch (e: Exception) {
+                    Timber.e(e, "[Migration] Failed to update GOG DB paths")
                 }
-                Timber.i("[Migration] Updated ${amazonGames.count { it.installPath.contains(oldPrefix) }} Amazon install paths")
-            } catch (e: Exception) {
-                Timber.e(e, "[Migration] Failed to update Amazon DB paths")
+
+                try {
+                    val amazonGames = amazonGameDao.getAllAsList()
+                    for (game in amazonGames) {
+                        if (game.installPath.isNotEmpty() && game.installPath.contains(oldPrefix)) {
+                            val newPath = game.installPath.replace(oldPrefix, newPrefix)
+                            amazonGameDao.markAsInstalled(game.productId, newPath, game.installSize, game.versionId)
+                        }
+                    }
+                    Timber.i("[Migration] Updated ${amazonGames.count { it.installPath.contains(oldPrefix) }} Amazon install paths")
+                } catch (e: Exception) {
+                    Timber.e(e, "[Migration] Failed to update Amazon DB paths")
+                }
             }
+
+            PrefManager.gogAmazonPathMigrated = true
+            Timber.i("[Migration] GOG/Amazon path migration complete")
         }
 
-        PrefManager.gogAmazonPathMigrated = true
-        Timber.i("[Migration] GOG/Amazon path migration complete")
-    }
-
-    companion object {
-        @JvmField
-        val events: EventDispatcher = EventDispatcher()
         internal var onDestinationChangedListener: NavChangedListener? = null
 
-        private lateinit var instance: PluviaApp
+        private lateinit var instance: Application
         private var cachedDefaultScreenSize: String? = null
 
         // TODO: find a way to make this saveable, this is terrible (leak that memory baby)
@@ -365,4 +389,16 @@ open class PluviaApp : SplitCompatApplication() {
         }
         Timber.w("[PluviaApp]: Could not preload system libjpeg.so (none of the candidate paths worked)")
     }
+}
+
+/**
+ * Dao access for [PluviaApp.bootstrap]'s one-time path migration: the
+ * bootstrap is static (no injected fields), so the daos come through a
+ * real Hilt entry point on whichever Application carries the graph.
+ */
+@dagger.hilt.EntryPoint
+@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+interface PluviaBootstrapEntryPoint {
+    fun gogGameDao(): GOGGameDao
+    fun amazonGameDao(): AmazonGameDao
 }
