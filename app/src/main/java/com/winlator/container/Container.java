@@ -126,6 +126,8 @@ public class Container {
     private String execArgs = ""; // Default exec arguments
     private String executablePath = ""; // Executable path for container
     private boolean sdlControllerAPI;
+    private boolean fasterExternalLoading;
+    private boolean disableLibredirect;
 
     // Preferred game language for Goldberg force_language.txt
     private String language = "english";
@@ -394,6 +396,22 @@ public class Container {
 
     public void setSdlControllerAPI(boolean sdlControllerAPI) {
         this.sdlControllerAPI = sdlControllerAPI;
+    }
+
+    public boolean isFasterExternalLoading() {
+        return fasterExternalLoading;
+    }
+
+    public void setFasterExternalLoading(boolean fasterExternalLoading) {
+        this.fasterExternalLoading = fasterExternalLoading;
+    }
+
+    public boolean isDisableLibredirect() {
+        return disableLibredirect;
+    }
+
+    public void setDisableLibredirect(boolean disableLibredirect) {
+        this.disableLibredirect = disableLibredirect;
     }
 
     public String getLanguage() {
@@ -736,6 +754,8 @@ public class Container {
             data.put("executablePath", executablePath);
             data.put("needsUnpacking", needsUnpacking);
             data.put("sdlControllerAPI", sdlControllerAPI);
+            data.put("fasterExternalLoading", fasterExternalLoading);
+            data.put("disableLibredirect", disableLibredirect);
             // Disable mouse input flag
             data.put("disableMouseInput", disableMouseInput);
             // Touchscreen mode flag
@@ -953,6 +973,12 @@ public class Container {
                 case "sdlControllerAPI" :
                     setSdlControllerAPI(data.getBoolean(key));
                     break;
+                case "fasterExternalLoading" :
+                    setFasterExternalLoading(data.getBoolean(key));
+                    break;
+                case "disableLibredirect" :
+                    setDisableLibredirect(data.getBoolean(key));
+                    break;
                 case "disableMouseInput" :
                     setDisableMouseInput(data.getBoolean(key));
                     break;
@@ -1149,6 +1175,7 @@ public class Container {
     public void setPortraitMode(boolean portraitMode) {
         this.portraitMode = portraitMode;
     }
+
 
     public String getContainerJson() {
         String content = FileUtils.readString(getConfigFile());

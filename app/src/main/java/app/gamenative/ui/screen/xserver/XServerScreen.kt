@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.View.OnLayoutChangeListener
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -227,6 +228,7 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.util.Arrays
 import java.util.Locale
+import kotlin.math.ceil
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.io.path.name
 import kotlin.math.roundToInt
@@ -280,6 +282,9 @@ private fun detectMaxRefreshRateHz(context: Context, attachedView: View?): Int {
 private data class XServerViewReleaseBinding(
     val xServerView: XServerRendererView,
     val windowModificationListener: WindowManager.OnWindowModificationListener,
+    var gameHost: FrameLayout? = null,
+    var gameHostLayoutListener: OnLayoutChangeListener? = null,
+    val screenWidth: Int,
 )
 
 private data class ControllerSlotUiState(
@@ -321,6 +326,46 @@ private fun normalizeProcessName(name: String): String {
     val base = trimmed.substringAfterLast('/').substringAfterLast('\\')
     val lower = base.lowercase(Locale.getDefault())
     return if (lower.endsWith(".exe")) lower.removeSuffix(".exe") else lower
+}
+
+internal fun parseScreenSize(screenSize: String): Pair<Int, Int>? {
+    val parts = screenSize.lowercase(Locale.getDefault()).split("x")
+    if (parts.size != 2) return null
+    val width = parts[0].trim().toIntOrNull() ?: return null
+    val height = parts[1].trim().toIntOrNull() ?: return null
+    if (width <= 0 || height <= 0) return null
+    return width to height
+}
+
+internal fun portraitGameHostHeight(
+    isPortrait: Boolean,
+    screenWidth: Int,
+    availableHeight: Int,
+    screenSize: String,
+): Int {
+    if (!isPortrait) return ViewGroup.LayoutParams.MATCH_PARENT
+    val (renderWidth, renderHeight) = parseScreenSize(screenSize) ?: return ViewGroup.LayoutParams.MATCH_PARENT
+    val aspectHeight = ceil(screenWidth * (renderHeight.toFloat() / renderWidth.toFloat())).toInt()
+    return if (availableHeight > 0) minOf(aspectHeight, availableHeight) else aspectHeight
+}
+
+private fun updatePortraitGameHostHeight(
+    gameHost: View,
+    isPortrait: Boolean,
+    screenWidth: Int,
+    screenSize: String,
+) {
+    val params = gameHost.layoutParams ?: return
+    val height = portraitGameHostHeight(
+        isPortrait,
+        screenWidth,
+        (gameHost.parent as? View)?.height ?: 0,
+        screenSize,
+    )
+    if (params.height != height) {
+        params.height = height
+        gameHost.layoutParams = params
+    }
 }
 
 private fun extractExecutableBasename(path: String): String {
@@ -1888,6 +1933,7 @@ fun XServerScreen(
             }
             val frameLayout = if (isPortrait) {
                 val top = FrameLayout(context)
+                top.setBackgroundColor(Color.BLACK)
                 mainRoot.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
                 top
             } else {
@@ -1943,7 +1989,6 @@ fun XServerScreen(
                 }
                 getxServer().renderer = renderer
                 PluviaApp.touchpadView = TouchpadView(context, getxServer(), PrefManager.getBoolean("capture_pointer_on_external_mouse", true))
-                frameLayout.addView(PluviaApp.touchpadView)
                 PluviaApp.touchpadView?.setMoveCursorToTouchpoint(PrefManager.getBoolean("move_cursor_to_touchpoint", false))
 
                 // Wire keyboard toggle callback for gesture "Show Keyboard" action.
@@ -2141,7 +2186,7 @@ fun XServerScreen(
                     }
                 getxServer().windowManager.addOnWindowModificationListener(wmListener)
                 windowModificationListener = wmListener
-                mainRoot.tag = XServerViewReleaseBinding(this, wmListener)
+                mainRoot.tag = XServerViewReleaseBinding(this, wmListener, screenWidth = screenWidth)
 
                 if (PluviaApp.xEnvironment == null) {
                     // Launch all blocking wine setup operations on a background thread to avoid blocking main thread
@@ -2332,11 +2377,39 @@ fun XServerScreen(
             val gameHost = FrameLayout(context).apply {
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    portraitGameHostHeight(
+                        isPortrait,
+                        screenWidth,
+                        frameLayout.height,
+                        container.screenSize,
+                    ),
                 )
             }
             frameLayout.addView(gameHost)
             gameHost.addView(xServerView as View)
+            (mainRoot.tag as? XServerViewReleaseBinding)?.let { binding ->
+                binding.gameHost = gameHost
+                val layoutListener = OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                    updatePortraitGameHostHeight(
+                        gameHost,
+                        isPortrait,
+                        screenWidth,
+                        container.screenSize,
+                    )
+                }
+                frameLayout.addOnLayoutChangeListener(layoutListener)
+                binding.gameHostLayoutListener = layoutListener
+                frameLayout.post {
+                    updatePortraitGameHostHeight(
+                        gameHost,
+                        isPortrait,
+                        screenWidth,
+                        container.screenSize,
+                    )
+                }
+            }
+            val touchpadHost = if (isPortrait) gameHost else frameLayout
+            touchpadHost.addView(PluviaApp.touchpadView)
 
             PluviaApp.inputControlsManager = InputControlsManager(context)
             RadialMenuCoordinator.install(
@@ -2585,6 +2658,16 @@ fun XServerScreen(
         },
         update = { view ->
             gameRoot = view
+            val binding = view.tag as? XServerViewReleaseBinding
+            val gameHost = binding?.gameHost
+            if (binding != null && gameHost != null) {
+                updatePortraitGameHostHeight(
+                    gameHost,
+                    isPortrait,
+                    binding.screenWidth,
+                    container.screenSize,
+                )
+            }
         },
         onRelease = { view ->
             gameRoot = null
@@ -2598,6 +2681,9 @@ fun XServerScreen(
                 // Remove the WindowManager listener associated with the released AndroidView.
                 binding.xServerView.renderer.setOnFrameRenderedListener(null)
                 binding.xServerView.getxServer().windowManager.removeOnWindowModificationListener(binding.windowModificationListener)
+                binding.gameHostLayoutListener?.let { listener ->
+                    (binding.gameHost?.parent as? View)?.removeOnLayoutChangeListener(listener)
+                }
                 if (PluviaApp.xServerView === binding.xServerView) {
                     PluviaApp.xServerView = null
                 }
@@ -3979,15 +4065,6 @@ private fun setupXEnvironment(
         envVars.remove("DXVK_FRAME_RATE")
         envVars.remove("VKD3D_FRAME_RATE")
         if (!envVars.has("WINEESYNC")) envVars.put("WINEESYNC", "1")
-
-        val ffpGameDir = runCatching {
-            Container.drivesIterator(container.drives).asSequence()
-                .firstOrNull { it[0] == "A" }?.let { File(it[1]).canonicalFile.path }
-        }.getOrNull() ?: ""
-        if (ffpGameDir.startsWith("/storage/") && !ffpGameDir.startsWith("/storage/emulated/")) {
-            envVars.put("FFP_ENABLE", "1")
-            envVars.put("FFP_MARKERS", "/steamapps/common/;/dosdevices/a:")
-        }
 
         val graphicsDriverConfig = KeyValueSet(container.getGraphicsDriverConfig())
         if (graphicsDriverConfig.get("version").lowercase(Locale.getDefault()).contains("gen8")) {
