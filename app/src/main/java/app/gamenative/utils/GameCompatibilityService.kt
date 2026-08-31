@@ -98,7 +98,8 @@ object GameCompatibilityService {
             val requestBuilder = Request.Builder()
                 .url(API_BASE_URL)
                 .post(body)
-                .header("Content-Type", "application/json")            val request = requestBuilder.build()
+                .header("Content-Type", "application/json")
+            val request = requestBuilder.build()
 
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
