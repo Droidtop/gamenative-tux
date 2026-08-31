@@ -1568,6 +1568,7 @@ private fun Preview_LibraryScreenContent() {
             onGoOnline = {},
             onSourceToggle = {},
             onAddCustomGameFolder = {},
+            onAddCustomGameScanRoot = {},
             onSortOptionChanged = {},
             onSteamCollectionToggle = {},
             onClearSteamCollections = {},
