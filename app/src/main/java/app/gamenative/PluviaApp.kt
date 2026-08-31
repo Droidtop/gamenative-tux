@@ -78,9 +78,9 @@ open class PluviaApp : SplitCompatApplication() {
          */
         @JvmStatic
         @JvmOverloads
-        fun bootstrap(app: Application, installCrashHandler: Boolean = true) {
+        fun bootstrap(host: Application, installCrashHandler: Boolean = true) {
             if (::instance.isInitialized) return
-            instance = app
+            instance = host
 
 
         preloadSystemLibraries()
@@ -99,28 +99,28 @@ open class PluviaApp : SplitCompatApplication() {
             Timber.plant(ReleaseTree())
         }
 
-        NetworkMonitor.init(app)
+        NetworkMonitor.init(host)
 
         // Init our custom crash handler.
         if (installCrashHandler) {
-            CrashHandler.initialize(app)
+            CrashHandler.initialize(host)
         }
 
         // Init our datastore preferences.
-        PrefManager.init(app)
-        NexusAuthManager.initialize(app)
-        FrontendSyncManager.init(app)
+        PrefManager.init(host)
+        NexusAuthManager.initialize(host)
+        FrontendSyncManager.init(host)
 
         // Initialize GOGConstants
-        app.gamenative.service.gog.GOGConstants.init(app)
+        app.gamenative.service.gog.GOGConstants.init(host)
 
-        DownloadService.populateDownloadService(app)
+        DownloadService.populateDownloadService(host)
 
-        migrateGogAmazonPaths(app)
+        migrateGogAmazonPaths(host)
 
         bootstrapScope.launch {
             ContainerMigrator.migrateLegacyContainersIfNeeded(
-                context = app,
+                context = host,
                 onProgressUpdate = null,
                 onComplete = null
             )
@@ -128,7 +128,7 @@ open class PluviaApp : SplitCompatApplication() {
 
         // Preload all container files in the background
         bootstrapScope.launch {
-            ContainerFilesDownloader.preloadAllContainerFiles(app)
+            ContainerFilesDownloader.preloadAllContainerFiles(host)
         }
 
         // Clear any stale temporary config overrides from previous app sessions
@@ -147,7 +147,7 @@ open class PluviaApp : SplitCompatApplication() {
             /* turn every event into an identified one */
             personProfiles = PersonProfiles.ALWAYS
         }
-        PostHogAndroid.setup(app, postHogConfig)
+        PostHogAndroid.setup(host, postHogConfig)
         com.posthog.PostHog.register("build_flavor", BuildConfig.FLAVOR)
 
         if (PrefManager.usageAnalyticsEnabled) {
@@ -159,14 +159,44 @@ open class PluviaApp : SplitCompatApplication() {
             )
         }
 
-        PowerManager.initialize(app)
+        PowerManager.initialize(host)
         }
 
         /**
          * One-time migration: moves GOG/Amazon game directories from
          * {filesDir}/ to {dataDir}/ to match Steam/Epic, and updates DB paths.
          */
-        private fun migrateGogAmazonPaths(app: Application) {
+            /**
+         * Some native libraries we dlopen at runtime (libsteamclient.so via SteamBootstrap,
+         * the lsfg-vk layer, etc.) depend on `libjpeg.so`, which isn't on every device's
+         * dynamic linker search path. Pre-load the system copy here with RTLD_GLOBAL
+         * semantics (System.load is global) so all subsequent dlopens find its symbols.
+         *
+         * Single place for all: runs once in Application.onCreate before any other
+         * native lib is loaded by this process. Failures are non-fatal — devices that
+         * don't have the file (or have it elsewhere) just fall through.
+         */
+        private fun preloadSystemLibraries() {
+            val is64 = android.os.Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
+            val candidates = if (is64) {
+                listOf("/system/lib64/libjpeg.so", "/system/lib/libjpeg.so")
+            } else {
+                listOf("/system/lib/libjpeg.so", "/system/lib64/libjpeg.so")
+            }
+            for (path in candidates) {
+                if (!File(path).exists()) continue
+                try {
+                    System.load(path)
+                    Timber.i("[PluviaApp]: Preloaded $path")
+                    return
+                } catch (e: Throwable) {
+                    Timber.w(e, "[PluviaApp]: System.load($path) failed")
+                }
+            }
+            Timber.w("[PluviaApp]: Could not preload system libjpeg.so (none of the candidate paths worked)")
+        }
+
+        private fun migrateGogAmazonPaths(host: Application) {
             val bootstrapDaos = dagger.hilt.android.EntryPointAccessors.fromApplication(
                 app,
                 PluviaBootstrapEntryPoint::class.java,
@@ -175,8 +205,8 @@ open class PluviaApp : SplitCompatApplication() {
             val amazonGameDao = bootstrapDaos.amazonGameDao()
             if (PrefManager.gogAmazonPathMigrated) return
 
-            val dataDir = app.dataDir.path
-            val filesDir = app.filesDir.absolutePath
+            val dataDir = host.dataDir.path
+            val filesDir = host.filesDir.absolutePath
             Timber.i("[Migration] Migrating GOG/Amazon install paths from $filesDir to $dataDir")
 
             val migrations = listOf(
@@ -360,35 +390,6 @@ open class PluviaApp : SplitCompatApplication() {
         }
     }
 
-    /**
-     * Some native libraries we dlopen at runtime (libsteamclient.so via SteamBootstrap,
-     * the lsfg-vk layer, etc.) depend on `libjpeg.so`, which isn't on every device's
-     * dynamic linker search path. Pre-load the system copy here with RTLD_GLOBAL
-     * semantics (System.load is global) so all subsequent dlopens find its symbols.
-     *
-     * Single place for all: runs once in Application.onCreate before any other
-     * native lib is loaded by this process. Failures are non-fatal — devices that
-     * don't have the file (or have it elsewhere) just fall through.
-     */
-    private fun preloadSystemLibraries() {
-        val is64 = android.os.Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
-        val candidates = if (is64) {
-            listOf("/system/lib64/libjpeg.so", "/system/lib/libjpeg.so")
-        } else {
-            listOf("/system/lib/libjpeg.so", "/system/lib64/libjpeg.so")
-        }
-        for (path in candidates) {
-            if (!File(path).exists()) continue
-            try {
-                System.load(path)
-                Timber.i("[PluviaApp]: Preloaded $path")
-                return
-            } catch (e: Throwable) {
-                Timber.w(e, "[PluviaApp]: System.load($path) failed")
-            }
-        }
-        Timber.w("[PluviaApp]: Could not preload system libjpeg.so (none of the candidate paths worked)")
-    }
 }
 
 /**
