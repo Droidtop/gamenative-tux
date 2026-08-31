@@ -223,7 +223,10 @@ class ContainerFilesDownloaderTest {
         val manifest = Json { ignoreUnknownKeys = true }
             .decodeFromString<ContainerFilesDownloader.ContainerFilesManifest>(manifestJson)
 
-        manifest.components.forEach { component ->
+        // External components (e.g. the Steam Runtime rootfs tarballs from
+        // Valve's own repo) deliberately live outside the GameNative CDN's
+        // container_files/ layout -- see ContainerFileComponent.external.
+        manifest.components.filterNot { it.external }.forEach { component ->
             assertTrue(
                 "Component ${component.id} URL should contain 'container_files/'",
                 component.url.contains("container_files/")
@@ -352,14 +355,22 @@ class ContainerFilesDownloaderTest {
             "downloads.gamenative.app",
             "pub-9fcd5294bd0d4b85a9d73615bf98f3b5.r2.dev"
         )
+        // External components fetch straight from their own host; the only
+        // one allowed today is Valve's repo (Steam Runtime images).
+        val validExternalDomains = listOf("repo.steampowered.com")
 
         manifest.components.forEach { component ->
-            val hasValidDomain = validDomains.any { domain ->
+            val domains = if (component.external) validExternalDomains else validDomains
+            val hasValidDomain = domains.any { domain ->
                 component.url.contains(domain)
             }
             assertTrue(
                 "Component ${component.id} should use a valid download domain",
                 hasValidDomain
+            )
+            assertTrue(
+                "Component ${component.id} should download over https",
+                component.url.startsWith("https://")
             )
         }
     }
@@ -370,7 +381,10 @@ class ContainerFilesDownloaderTest {
         val manifest = Json { ignoreUnknownKeys = true }
             .decodeFromString<ContainerFilesDownloader.ContainerFilesManifest>(manifestJson)
 
-        manifest.components.forEach { component ->
+        // External components use a local cache name distinct from the
+        // remote file's own name (Valve's tarball names contain commas and
+        // the full runtime id), so only CDN components carry this rule.
+        manifest.components.filterNot { it.external }.forEach { component ->
             // URL should contain the component name
             assertTrue(
                 "Component ${component.id} URL should contain its name",
@@ -433,8 +447,30 @@ class ContainerFilesDownloaderTest {
 
         manifest.components.forEach { component ->
             assertTrue(
-                "Component ${component.id} should be a tzst file",
-                component.name.endsWith(".tzst")
+                "Component ${component.id} should be a tzst file (or a tar.gz for external components)",
+                if (component.external) {
+                    component.name.endsWith(".tar.gz")
+                } else {
+                    component.name.endsWith(".tzst")
+                }
+            )
+        }
+    }
+
+    @Test
+    fun testSteamRuntimeComponentsExist() {
+        val manifestJson = context.assets.open(ContainerFilesDownloader.CONTAINER_FILES_MANIFEST_FILE).bufferedReader().use { it.readText() }
+        val manifest = Json { ignoreUnknownKeys = true }
+            .decodeFromString<ContainerFilesDownloader.ContainerFilesManifest>(manifestJson)
+
+        listOf("scout", "soldier", "sniper").forEach { variant ->
+            val component = manifest.components.find { it.id == "steamrt_$variant" }
+            assertNotNull("steamrt_$variant should exist in manifest", component)
+            assertTrue("steamrt_$variant must be external (Valve-hosted)", component!!.external)
+            assertTrue("steamrt_$variant must be alwaysDownload (never bundled)", component.alwaysDownload)
+            assertTrue(
+                "steamrt_$variant URL should point at Valve's runtime images repo",
+                component.url.startsWith("https://repo.steampowered.com/steamrt-images-$variant/")
             )
         }
     }
