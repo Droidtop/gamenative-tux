@@ -732,7 +732,9 @@
     <string name="playtime">Playtime</string>
     <string name="add_custom_game_content_desc">Add custom game</string>
     <string name="add_custom_game_dialog_title">Add Custom Game</string>
-    <string name="add_custom_game_dialog_message">Please select the folder containing the game files you want to add as a custom game.</string>
+    <string name="add_custom_game_dialog_message">Add a single game\'s folder, or adopt a whole folder of games in place (each subfolder becomes a game \u2014 nothing is copied or moved).</string>
+    <string name="add_custom_game_single">Single game</string>
+    <string name="add_custom_game_scan_root">Folder of games</string>
     <string name="add_custom_game_dont_show_again">Don\'t show this dialog again</string>
     <string name="custom_game_importing">Importing game…</string>
     <string name="custom_game_import_success">Game imported</string>

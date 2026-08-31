@@ -606,6 +606,27 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Adds an arbitrary user folder whose immediate subfolders are each a game (the
+     * "adopt my existing games folder in place" case) -- nothing is copied or moved,
+     * and nothing under it is ever app-managed. See CustomGameScanner.scanRootPaths.
+     */
+    fun addCustomGameScanRoot(path: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val normalized = File(path).absolutePath
+            if (!File(normalized).isDirectory) {
+                Timber.tag("LibraryViewModel").w("Selected scan root is not a directory: $normalized")
+                return@launch
+            }
+            val roots = PrefManager.customGameScanRoots.toMutableSet()
+            if (roots.add(normalized)) {
+                PrefManager.customGameScanRoots = roots
+            }
+            CustomGameScanner.invalidateCache()
+            onFilterApps(paginationCurrentPage)
+        }
+    }
+
     /** Whether the current sort or any active filter depends on per-game stats. */
     private fun usesStats(state: LibraryState): Boolean {
         val statSorts = setOf(

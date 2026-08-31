@@ -93,10 +93,12 @@ object CustomGameScanner {
         }
 
     /**
-     * Roots whose immediate subfolders are treated as custom games: the public GameNative
-     * roots on every volume plus the app's own sandbox folders.
+     * App-managed roots whose immediate subfolders are treated as custom games: the public
+     * GameNative roots on every volume plus the app's own sandbox folders. Folders under
+     * these are the app's own to delete when a game is removed -- unlike user scan roots
+     * (see [scanRootPaths]).
      */
-    val scanRootPaths: List<String>
+    val managedRootPaths: List<String>
         get() {
             val roots = LinkedHashSet<String>()
             val appDir = DownloadService.baseExternalAppDirPath
@@ -114,6 +116,16 @@ object CustomGameScanner {
             roots.add(File(DownloadService.baseDataDirPath, "CustomGames").absolutePath)
             return roots.toList()
         }
+
+    /**
+     * Every root whose immediate subfolders are treated as custom games: the app-managed
+     * [managedRootPaths] plus the user's own arbitrary scan roots
+     * (PrefManager.customGameScanRoots -- e.g. an existing game-sync folder). User roots
+     * are scanned exactly like managed ones but are NEVER the app's to delete.
+     */
+    val scanRootPaths: List<String>
+        get() = (managedRootPaths + PrefManager.customGameScanRoots.map { File(it).absolutePath })
+            .distinct()
 
     /**
      * Ensures the default CustomGames folder exists by creating it if it doesn't.
@@ -581,7 +593,7 @@ object CustomGameScanner {
      * delete when the game is removed, unlike folders mapped in place.
      */
     fun isManagedFolder(folderPath: String): Boolean =
-        scanRootPaths.any { folderPath.startsWith("$it/") }
+        managedRootPaths.any { folderPath.startsWith("$it/") }
 
     /** Manually added folders plus every immediate subfolder of the scan roots. */
     private fun candidateFolders(): Set<String> {

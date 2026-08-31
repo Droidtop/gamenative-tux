@@ -1376,6 +1376,26 @@ object PrefManager {
             setPref(CUSTOM_GAME_PATHS, Json.encodeToString(value))
         }
 
+    // Arbitrary user-chosen folders whose immediate subfolders are each
+    // treated as a custom game -- the "point GameNative at my existing
+    // games/gamesync folder" case, deliberately distinct from
+    // customGameManualFolders below (one folder = ONE game). Never
+    // app-managed: deleting a game must never delete anything under one
+    // of these (see CustomGameScanner.isManagedFolder).
+    private val CUSTOM_GAME_SCAN_ROOTS = stringPreferencesKey("custom_game_scan_roots")
+    var customGameScanRoots: Set<String>
+        get() {
+            val value = getPref(CUSTOM_GAME_SCAN_ROOTS, "[]")
+            return try {
+                Json.decodeFromString<Set<String>>(value)
+            } catch (e: Exception) {
+                emptySet()
+            }
+        }
+        set(value) {
+            setPref(CUSTOM_GAME_SCAN_ROOTS, Json.encodeToString(value))
+        }
+
     private val CUSTOM_GAME_MANUAL_FOLDERS = stringPreferencesKey("custom_game_manual_folders")
     var customGameManualFolders: Set<String>
         get() {

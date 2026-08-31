@@ -163,6 +163,7 @@ fun HomeLibraryScreen(
         onDownloadsClick = onDownloadsClick,
         onSourceToggle = viewModel::onSourceToggle,
         onAddCustomGameFolder = viewModel::addCustomGameFolder,
+        onAddCustomGameScanRoot = viewModel::addCustomGameScanRoot,
         onSortOptionChanged = viewModel::onSortOptionChanged,
         onSteamCollectionToggle = viewModel::onSteamCollectionToggle,
         onClearSteamCollections = viewModel::onClearSteamCollections,
@@ -206,6 +207,7 @@ private fun LibraryScreenContent(
     onDownloadsClick: () -> Unit = {},
     onSourceToggle: (GameSource) -> Unit,
     onAddCustomGameFolder: (String) -> Unit,
+    onAddCustomGameScanRoot: (String) -> Unit,
     onSortOptionChanged: (SortOption) -> Unit,
     onSteamCollectionToggle: (String) -> Unit,
     onClearSteamCollections: () -> Unit,
@@ -510,6 +512,27 @@ private fun LibraryScreenContent(
                 requestPermissionsForPath(context, path, storagePermissionLauncher)
             }
             onAddCustomGameFolder(path)
+        },
+        onFailure = { message ->
+            SnackbarManager.show(message)
+        },
+    )
+
+    // Second picker: an arbitrary folder OF games (each immediate subfolder becomes a
+    // game, in place -- the "adopt my existing games/game-sync folder" case). Same real
+    // permission flow as the single-game picker above.
+    val scanRootPicker = rememberCustomGameFolderPicker(
+        onPathSelected = { path ->
+            val folder = java.io.File(path)
+            val canAccess = try {
+                folder.exists() && folder.isDirectory && folder.canRead()
+            } catch (e: Exception) {
+                false
+            }
+            if (!canAccess && !CustomGameScanner.hasStoragePermission(context, path)) {
+                requestPermissionsForPath(context, path, storagePermissionLauncher)
+            }
+            onAddCustomGameScanRoot(path)
         },
         onFailure = { message ->
             SnackbarManager.show(message)
@@ -1453,14 +1476,27 @@ private fun LibraryScreenContent(
                             folderPicker.launchPicker()
                         },
                     ) {
-                        Text(stringResource(android.R.string.ok))
+                        Text(stringResource(R.string.add_custom_game_single))
                     }
                 },
                 dismissButton = {
-                    TextButton(
-                        onClick = { showAddCustomGameDialog = false },
-                    ) {
-                        Text(stringResource(android.R.string.cancel))
+                    Row {
+                        TextButton(
+                            onClick = {
+                                if (dontShowAgain) {
+                                    PrefManager.showAddCustomGameDialog = false
+                                }
+                                showAddCustomGameDialog = false
+                                scanRootPicker.launchPicker()
+                            },
+                        ) {
+                            Text(stringResource(R.string.add_custom_game_scan_root))
+                        }
+                        TextButton(
+                            onClick = { showAddCustomGameDialog = false },
+                        ) {
+                            Text(stringResource(android.R.string.cancel))
+                        }
                     }
                 },
             )
