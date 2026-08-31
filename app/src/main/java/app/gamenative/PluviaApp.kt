@@ -38,7 +38,6 @@ import com.winlator.widget.TouchpadView
 import com.winlator.widget.XServerRendererView
 import com.winlator.xenvironment.XEnvironment
 import timber.log.Timber
-import dagger.hilt.android.HiltAndroidApp
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,8 +46,14 @@ import kotlinx.coroutines.launch
 
 typealias NavChangedListener = NavController.OnDestinationChangedListener
 
-@HiltAndroidApp
-class PluviaApp : SplitCompatApplication() {
+// NOT annotated @HiltAndroidApp here, deliberately: Hilt hard-errors on
+// that annotation in any module that is not an application module, and
+// droidtop consumes this whole tree as a library. The annotated class
+// lives in src/hiltapp/ (see build.gradle.kts), a source root only THIS
+// project's own application build includes -- gamenative standalone
+// behaves exactly as before, and a library consumer supplies its own
+// @HiltAndroidApp application instead.
+open class PluviaApp : SplitCompatApplication() {
 
     @Inject lateinit var gogGameDao: GOGGameDao
     @Inject lateinit var amazonGameDao: AmazonGameDao

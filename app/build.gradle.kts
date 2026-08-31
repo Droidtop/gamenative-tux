@@ -437,3 +437,9 @@ dependencies {
     "modernXrImplementation"("com.meta.horizon.platform.sdk:core-kotlin:0.2.2")
     "modernXrImplementation"("com.meta.horizon.platform.sdk:iap-kotlin:0.2.2")
 }
+
+// The @HiltAndroidApp application lives in its own source root so a
+// library consumer of src/main (droidtop compiles this whole tree
+// directly) never sees it -- Hilt hard-errors on that annotation
+// outside an application module. See PluviaApp.kt's own comment.
+android.sourceSets.getByName("main").java.srcDir("src/hiltapp/java")

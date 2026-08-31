@@ -33,7 +33,7 @@
     </queries>
 
     <application
-        android:name=".PluviaApp"
+        android:name=".HiltPluviaApp"
         android:usesCleartextTraffic="true"
         android:allowBackup="false"
         android:extractNativeLibs="true"
