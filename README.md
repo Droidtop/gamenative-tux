@@ -31,23 +31,45 @@
 ## About this fork
 
 `gamenative-tux` is a fork of [utkarshdalal/GameNative](https://github.com/utkarshdalal/GameNative), maintained
-as a real GitHub Fork (not a one-off copy) specifically so it stays easy to pull upstream's changes and to send
-patches back. The one real, deliberate divergence: **native Linux application/game support**, both ARM and x86,
-alongside upstream's existing Windows/Wine support — not a separate app, the same real library/launch model,
-so a Linux-native title and a Wine-run Windows title are equally first-class.
+as a real GitHub Fork (not a one-off copy) with a daily automated upstream merge (`.github/workflows/sync-upstream.yml`),
+so upstream's own fixes and driver updates keep flowing in. It is both a standalone app in its own right and the
+PC-game execution foundation [droidtop](https://github.com/bi0shacker001/droidtop) compiles in for its Wine and
+native-Linux game support.
 
-The mechanism this fork actually adds: `GuestProgramLauncherComponent`'s own bundled proot invocation (which
-upstream already uses internally to run Wine itself) is now behind a real, swappable
-`com.winlator.linux.LinuxContainerBackend` interface (`LinuxContainerBackendRegistry`), defaulting to the same
-proot-based backend upstream already bundles (`DefaultProotContainerBackend` — unchanged behavior standalone),
-but overridable by a host app that wants to supply its own Linux container/namespace backend instead. This is
-what lets [droidtop](https://github.com/bi0shacker001/droidtop) wire this fork's Wine/Windows support in while
-using its own existing container infrastructure for the Linux-native side, without two separate, duplicate
-proot implementations running side by side.
+What this fork changes, concretely:
 
-**Status**: the modular backend seam is real and in place; the actual ARM/x86 native-Linux game execution path
-(rootfs provisioning, dependency resolution, a real launch flow distinct from the Wine one) is real, ongoing
-work, not finished yet — this section will be updated as that lands, not oversold ahead of it.
+- **Native Linux game support** (the reason "tux" is in the name), both ARM and x86, alongside upstream's
+  Windows/Wine support — the same library/launch model, so a Linux-native title and a Wine-run Windows title
+  are equally first-class:
+  - *Linux depots*: an explicit "Prefer native Linux version" setting makes Steam installs resolve a game's
+    real Linux depots when they exist (`SteamService`'s depot resolution), instead of always taking the
+    Windows build.
+  - *Native launch path*: `LinuxProgramLauncherComponent` runs a real Linux ELF directly — no Wine, no
+    WINEPREFIX — reading the binary's actual ELF architecture and translating through the same box64/box86
+    upstream already uses for Windows binaries only when the architectures genuinely differ (an ARM64 Linux
+    build runs untranslated).
+  - *Steam Runtime containers*: native Linux games can run inside Valve's own published Steam Runtime
+    platforms (scout / soldier / sniper — the exact environments Steam's Linux builds are linked against and
+    QA'd in), downloaded on demand from Valve's repo and selectable in Settings, with the shared Wine rootfs
+    as the fallback.
+  - *Swappable container backend*: the proot invocation upstream builds inline for Wine now lives behind
+    `com.winlator.linux.LinuxContainerBackend` (`LinuxContainerBackendRegistry`), defaulting to the same
+    bundled proot (`DefaultProotContainerBackend` — unchanged behavior standalone) but overridable by a host
+    app. This is what lets droidtop supply its own container/namespace infrastructure for the Linux side
+    without a second, duplicate proot implementation.
+- **Google Play Integrity removed, deliberately.** Upstream attaches Play Integrity attestation tokens to its
+  community-config API requests; this fork strips the Play Integrity client, its Play Core dependency, and the
+  token headers end to end — no Google attestation code runs in this app. Those API requests still go out,
+  just without the token (the backend may serve them degraded; that is the accepted trade). The daily upstream
+  sync fails loudly rather than merging Play Integrity back in.
+- **Fork-appropriate CI.** Upstream's signed-release/Discord workflows (which depend on upstream's own
+  keystores and secrets, and can never succeed in a fork) are deleted; one workflow
+  (`push-build-check.yml`) verifies every push and publishes installable debug APKs for both flavors as
+  artifacts. **Builds of this fork come from those CI artifacts** — the Download link below is upstream's own
+  release of upstream's app.
+
+Licensing is unchanged: GPL-3.0, same as upstream (see the License section below); the fork's changes are
+published here in full, as the license requires.
 
 ---
 
