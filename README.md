@@ -33,7 +33,7 @@
 `gamenative-tux` is a fork of [utkarshdalal/GameNative](https://github.com/utkarshdalal/GameNative), maintained
 as a real GitHub Fork (not a one-off copy) with a daily automated upstream merge (`.github/workflows/sync-upstream.yml`),
 so upstream's own fixes and driver updates keep flowing in. It is both a standalone app in its own right and the
-PC-game execution foundation [droidtop](https://github.com/bi0shacker001/droidtop) compiles in for its Wine and
+PC-game execution foundation [droidtop](https://github.com/droidtop/droidtop) compiles in for its Wine and
 native-Linux game support.
 
 What this fork changes, concretely:
