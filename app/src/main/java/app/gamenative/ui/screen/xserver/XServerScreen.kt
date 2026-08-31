@@ -128,6 +128,7 @@ import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.downloader.CoreDriverDownloader
 import app.gamenative.utils.CustomGameScanner
 import app.gamenative.utils.ExecutableSelectionUtils
+import app.gamenative.utils.SteamRuntime
 import app.gamenative.utils.LsfgQuickMenuHelper
 import app.gamenative.utils.LsfgVkManager
 import app.gamenative.utils.ManifestComponentHelper
@@ -3787,6 +3788,12 @@ private fun setupNativeLinuxEnvironment(
     val imageFs = ImageFs.find(context)
     val rootPath = imageFs.getRootDir().getPath()
     FileUtils.clear(imageFs.getTmpDir())
+
+    // If the user wants the Steam Runtime rootfs and it is not installed
+    // yet, start that download in the background now -- THIS launch still
+    // runs on whatever rootfs is actually available (never blocks a game
+    // behind a 300MB download), the next one picks the runtime up.
+    SteamRuntime.kickOffInstallIfWanted(context)
 
     val environment = XEnvironment(context, imageFs)
     environment.addComponent(

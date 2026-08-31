@@ -48,11 +48,15 @@ public class LinuxProgramLauncherComponent {
     public enum Machine { X86, X86_64, ARM, AARCH64, UNKNOWN }
 
     /**
-     * Runs [executablePath] (an absolute path INSIDE the rootfs, e.g.
-     * "/root/mygame/bin/game") with [args] -- the same real pid/
-     * termination-callback contract {@link GuestProgramLauncherComponent#exec}
-     * uses, see {@link com.winlator.linux.LinuxContainerBackend}'s own doc
-     * comment for what that contract actually guarantees.
+     * Runs [executablePath] -- an absolute HOST path (the game lives under
+     * the app's own Steam storage, outside any rootfs) that the backend's
+     * single-arg {@code --bind} maps to the same absolute path inside the
+     * guest, which is also why {@link #detectMachine} reads it directly
+     * from disk rather than resolving it against the rootfs -- with
+     * [args]; the same real pid/termination-callback contract {@link
+     * GuestProgramLauncherComponent#exec} uses, see {@link
+     * com.winlator.linux.LinuxContainerBackend}'s own doc comment for what
+     * that contract actually guarantees.
      */
     public static int exec(
             Context context,
@@ -65,8 +69,16 @@ public class LinuxProgramLauncherComponent {
     ) {
         Log.d("LinuxProgramLauncherComponent", "Executing native Linux program " + executablePath);
         ImageFs imageFs = ImageFs.find(context);
-        File rootDir = imageFs.getRootDir();
-        Machine machine = detectMachine(new File(rootDir, executablePath));
+        // Steam Runtime (sniper) when the user has it enabled and it's
+        // installed -- the environment Steam's own Linux builds were
+        // actually linked against -- else the shared Wine ImageFs. The
+        // game's own files live OUTSIDE either rootfs (bound in via
+        // bindingPaths), so this only swaps the userspace around them.
+        File steamRuntimeRoot = app.gamenative.utils.SteamRuntime.preferredRootDir(context);
+        boolean usingSteamRuntime = steamRuntimeRoot != null;
+        File rootDir = usingSteamRuntime ? steamRuntimeRoot : imageFs.getRootDir();
+        Log.d("LinuxProgramLauncherComponent", "Using rootfs " + rootDir + (usingSteamRuntime ? " (Steam Runtime sniper)" : " (ImageFs)"));
+        Machine machine = detectMachine(new File(executablePath));
         boolean is64Bit = machine == Machine.X86_64 || machine == Machine.AARCH64;
         boolean needsTranslation = machine == Machine.X86 || machine == Machine.X86_64;
 
@@ -80,6 +92,14 @@ public class LinuxProgramLauncherComponent {
         envVars.put("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
         envVars.put("LD_LIBRARY_PATH", "/usr/lib/aarch64-linux-gnu:/usr/lib/arm-linux-gnueabihf");
         envVars.put("ANDROID_SYSVSHM_SERVER", UnixSocketConfig.SYSVSHM_SERVER_PATH);
+        if (usingSteamRuntime) {
+            // sniper is Debian-multiarch-layout x86_64/i386; point box64/86
+            // at its real library paths explicitly (only here -- the
+            // ImageFs path keeps relying on box64's own built-in defaults,
+            // exactly as it did before this rootfs option existed).
+            envVars.put("BOX64_LD_LIBRARY_PATH", "/usr/lib/x86_64-linux-gnu:/usr/lib:/lib");
+            envVars.put("BOX86_LD_LIBRARY_PATH", "/usr/lib/i386-linux-gnu:/usr/lib:/lib");
+        }
         if (extraVars != null) envVars.putAll(extraVars);
 
         StringBuilder command = new StringBuilder();
@@ -141,7 +161,11 @@ public class LinuxProgramLauncherComponent {
      */
     private static void extractBoxFiles(Context context, File rootDir, boolean need64) {
         PrefManager.init(context);
-        String versionKey = need64 ? "current_box64_version" : "current_box86_version";
+        // Keyed per rootfs (path suffix): the same box64 build has to be
+        // extracted into EACH rootfs it runs in -- a version marker shared
+        // between ImageFs and the Steam Runtime rootfs would mark the
+        // second one "done" without ever extracting into it.
+        String versionKey = (need64 ? "current_box64_version" : "current_box86_version") + "@" + rootDir.getAbsolutePath();
         String version = need64 ? DefaultVersion.BOX64 : DefaultVersion.BOX86;
         String currentVersion = PrefManager.getString(versionKey, "");
         if (version.equals(currentVersion)) return;

@@ -1283,6 +1283,31 @@ object PrefManager {
             setPref(PREFER_LINUX_DEPOTS, value)
         }
 
+    // Default true, unlike preferLinuxDepots above: this doesn't choose
+    // WHICH build of a game to install, only which rootfs an
+    // already-chosen native Linux build runs inside -- and Valve's own
+    // Steam Runtime (sniper) is the environment those builds were
+    // actually linked against and QA'd in, so it's the correct default
+    // whenever a native Linux game runs at all. See
+    // app.gamenative.utils.SteamRuntime.
+    private val USE_STEAM_RUNTIME = booleanPreferencesKey("use_steam_runtime")
+    var useSteamRuntime: Boolean
+        get() = getPref(USE_STEAM_RUNTIME, true)
+        set(value) {
+            setPref(USE_STEAM_RUNTIME, value)
+        }
+
+    // Which Steam Runtime generation to use -- see
+    // app.gamenative.utils.SteamRuntime.VARIANTS for what each one
+    // actually is. Sniper (Steam Runtime 3) is what new native Linux
+    // builds target; scout is what the classic 2013-2019 catalog targets.
+    private val STEAM_RUNTIME_VARIANT = stringPreferencesKey("steam_runtime_variant")
+    var steamRuntimeVariant: String
+        get() = getPref(STEAM_RUNTIME_VARIANT, "sniper")
+        set(value) {
+            setPref(STEAM_RUNTIME_VARIANT, value)
+        }
+
     private val EXTERNAL_STORAGE_PATH = stringPreferencesKey("external_storage_path")
     var externalStoragePath: String
         get() = getPref(EXTERNAL_STORAGE_PATH, "")

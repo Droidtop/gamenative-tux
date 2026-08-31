@@ -1135,6 +1135,12 @@
     <string name="settings_interface_storage_volume_title">Storage volume</string>
     <string name="settings_interface_prefer_linux_depots_title">Prefer native Linux version when available</string>
     <string name="settings_interface_prefer_linux_depots_subtitle">Off by default: a Linux depot isn\'t always the better choice — some are just a Proton-wrapped Windows build, and some native ports run worse than the Windows version through Wine. Applies to new installs; already-installed games keep their current version.</string>
+    <string name="settings_interface_use_steam_runtime_title">Run native Linux games in the Steam Runtime</string>
+    <string name="settings_interface_use_steam_runtime_subtitle">Uses Valve\'s Steam Runtime 3 (sniper) as the container for native Linux games, the exact environment Steam\'s Linux builds are made for. Downloaded once (about 300 MB) the first time a native Linux game launches; games launched before it finishes run in the regular Wine environment instead.</string>
+    <string name="settings_interface_steam_runtime_variant_title">Steam Runtime version</string>
+    <string name="settings_steam_runtime_scout">Steam Runtime 1 \u201cscout\u201d (classic 2013\u20132019 native ports)</string>
+    <string name="settings_steam_runtime_soldier">Steam Runtime 2 \u201csoldier\u201d</string>
+    <string name="settings_steam_runtime_sniper">Steam Runtime 3 \u201csniper\u201d (current, recommended)</string>
     <string name="settings_interface_download_server_title">Steam Download Server</string>
     <string name="settings_interface_restart_required_title">Restart Required</string>
 

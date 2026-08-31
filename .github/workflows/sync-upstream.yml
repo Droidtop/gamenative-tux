@@ -67,6 +67,29 @@ jobs:
             fi
           done
 
+      # The same tripwire idea for the fork's own keystone Linux work: a
+      # merge can't silently delete files upstream never had, but this
+      # makes that guarantee explicit -- if any of these ever goes missing
+      # after a sync, something is genuinely wrong and a person must look.
+      - name: Verify the fork's Linux work survived the merge
+        run: |
+          for f in \
+            app/src/main/java/com/winlator/linux/LinuxContainerBackend.java \
+            app/src/main/java/com/winlator/linux/LinuxContainerBackendRegistry.java \
+            app/src/main/java/com/winlator/linux/DefaultProotContainerBackend.java \
+            app/src/main/java/com/winlator/xenvironment/components/LinuxProgramLauncherComponent.java \
+            app/src/main/java/app/gamenative/utils/SteamRuntime.kt \
+            .github/workflows/push-build-check.yml; do
+            if [ ! -e "$f" ]; then
+              echo "::error::Fork keystone file $f is missing after the upstream merge. Investigate by hand before anything gets pushed."
+              exit 1
+            fi
+          done
+          if ! grep -q "preferLinuxDepots" app/src/main/java/app/gamenative/PrefManager.kt; then
+            echo "::error::preferLinuxDepots is gone from PrefManager after the upstream merge. Investigate by hand."
+            exit 1
+          fi
+
       - name: Push if there's anything new
         run: |
           if git diff --quiet origin/master HEAD; then

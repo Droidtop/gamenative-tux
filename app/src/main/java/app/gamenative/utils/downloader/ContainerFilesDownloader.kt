@@ -33,7 +33,17 @@ object ContainerFilesDownloader {
     data class ContainerFileComponent(
         val id: String,
         val name: String,
-        val url: String
+        val url: String,
+        // True for components that exist ONLY as a download (no bundled-asset
+        // copy in any variant) -- e.g. the Steam Runtime rootfs, which is far
+        // too large to ship in the APK. These download on the legacy variant
+        // too, instead of taking the bundled-assets branch below.
+        val alwaysDownload: Boolean = false,
+        // True for components hosted somewhere other than the GameNative
+        // manifest server (e.g. Valve's own repo.steampowered.com) -- these
+        // fetch straight from [url] instead of going through
+        // SteamService.fetchFileWithFallback's own hardcoded hosts.
+        val external: Boolean = false,
     )
 
     internal fun getCacheFile(cacheDir: File, component: ContainerFileComponent): File =
@@ -75,8 +85,9 @@ object ContainerFilesDownloader {
         val component = manifest.components.find { it.id == componentId }
             ?: throw Exception("Container file $componentId not found in $CONTAINER_FILES_MANIFEST_FILE")
 
-        // Legacy variant: use bundled assets
-        if (!BuildConfig.MODERN_ANDROID) {
+        // Legacy variant: use bundled assets (unless the component only
+        // exists as a download)
+        if (!BuildConfig.MODERN_ANDROID && !component.alwaysDownload) {
             Timber.d("Legacy variant: Container file $componentId will be extracted from bundled assets")
             return@withContext null
         }
@@ -96,12 +107,16 @@ object ContainerFilesDownloader {
         cacheDir.mkdirs()
 
         try {
-            SteamService.fetchFileWithFallback(
-                fileName = "container_files/${component.name}",
-                dest = destFile,
-                context = context,
-                onProgress = onProgress
-            )
+            if (component.external) {
+                SteamService.fetchFile(component.url, destFile, onProgress)
+            } else {
+                SteamService.fetchFileWithFallback(
+                    fileName = "container_files/${component.name}",
+                    dest = destFile,
+                    context = context,
+                    onProgress = onProgress
+                )
+            }
             Timber.i("Successfully downloaded container file: $componentId")
         } catch (e: Exception) {
             Timber.e(e, "Failed to download container file: $componentId")
@@ -161,7 +176,10 @@ object ContainerFilesDownloader {
             val manifest = loadContainerFilesManifest(context)
             Timber.i("Preloading ${manifest.components.size} container files in background")
 
-            manifest.components.forEach { component ->
+            // On-demand-only components (alwaysDownload, e.g. the ~300MB
+            // Steam Runtime rootfs) are deliberately NOT preloaded -- they
+            // download the first time something actually needs them.
+            manifest.components.filter { !it.alwaysDownload }.forEach { component ->
                 try {
                     ensureContainerFileAvailable(context, component.id) { progress ->
                         // Silent download, no UI updates

@@ -44,6 +44,7 @@ import app.gamenative.R
 import app.gamenative.PrefManager
 import app.gamenative.enums.AppTheme
 import app.gamenative.ui.component.dialog.SingleChoiceDialog
+import app.gamenative.utils.SteamRuntime
 import app.gamenative.ui.theme.settingsTileColorsAlt
 import com.alorma.compose.settings.ui.SettingsGroup
 import com.alorma.compose.settings.ui.SettingsSwitch
@@ -600,6 +601,43 @@ fun SettingsGroupInterface(
                 PrefManager.preferLinuxDepots = it
             },
         )
+        // Which rootfs a native Linux build runs inside -- see
+        // PrefManager.useSteamRuntime's own doc comment for why this one
+        // defaults ON while preferLinuxDepots defaults off.
+        var useSteamRuntime by rememberSaveable { mutableStateOf(PrefManager.useSteamRuntime) }
+        SettingsSwitch(
+            colors = settingsTileColorsAlt(),
+            title = { Text(text = stringResource(R.string.settings_interface_use_steam_runtime_title)) },
+            subtitle = { Text(text = stringResource(R.string.settings_interface_use_steam_runtime_subtitle)) },
+            state = useSteamRuntime,
+            onCheckedChange = {
+                useSteamRuntime = it
+                PrefManager.useSteamRuntime = it
+            },
+        )
+        var openRuntimeVariantDialog by rememberSaveable { mutableStateOf(false) }
+        var runtimeVariant by rememberSaveable { mutableStateOf(SteamRuntime.selectedVariant()) }
+        if (useSteamRuntime) {
+            SettingsMenuLink(
+                colors = settingsTileColorsAlt(),
+                title = { Text(text = stringResource(R.string.settings_interface_steam_runtime_variant_title)) },
+                subtitle = { Text(text = steamRuntimeVariantLabel(runtimeVariant)) },
+                onClick = { openRuntimeVariantDialog = true },
+            )
+        }
+        SingleChoiceDialog(
+            openDialog = openRuntimeVariantDialog,
+            icon = Icons.Default.Map,
+            iconDescription = stringResource(R.string.settings_interface_steam_runtime_variant_title),
+            title = stringResource(R.string.settings_interface_steam_runtime_variant_title),
+            items = SteamRuntime.VARIANTS.map { steamRuntimeVariantLabel(it) },
+            currentItem = SteamRuntime.VARIANTS.indexOf(runtimeVariant).coerceAtLeast(0),
+            onSelected = { index ->
+                runtimeVariant = SteamRuntime.VARIANTS[index]
+                PrefManager.steamRuntimeVariant = runtimeVariant
+            },
+            onDismiss = { openRuntimeVariantDialog = false },
+        )
         // Steam download server selection
         SettingsMenuLink(
             colors = settingsTileColorsAlt(),
@@ -819,3 +857,9 @@ private fun Preview_SettingsScreen() {
     }
 }
 
+@Composable
+private fun steamRuntimeVariantLabel(variant: String): String = when (variant) {
+    "scout" -> stringResource(R.string.settings_steam_runtime_scout)
+    "soldier" -> stringResource(R.string.settings_steam_runtime_soldier)
+    else -> stringResource(R.string.settings_steam_runtime_sniper)
+}
