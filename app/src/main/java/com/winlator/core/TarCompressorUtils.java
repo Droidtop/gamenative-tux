@@ -27,6 +27,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
 
 public abstract class TarCompressorUtils {
     public enum Type {XZ, ZSTD, GZIP}
@@ -181,6 +182,30 @@ public abstract class TarCompressorUtils {
                     continue;
 
                 File file = new File(destination, entryName);
+
+                // These archives arrive from the network. Refuse any
+                // entry that would land outside the destination: plain
+                // "../" traversal, and -- since tar entries can be
+                // symlinks -- a later entry routed through a symlinked
+                // directory an earlier entry planted. Canonicalizing the
+                // PARENT resolves both; a regular-file entry whose final
+                // component is already a symlink is unlinked first so
+                // the write cannot follow it out.
+                try {
+                    String destPath = destination.getCanonicalPath();
+                    File parentDir = file.getParentFile();
+                    String parentPath = parentDir != null ? parentDir.getCanonicalPath() : null;
+                    if (parentPath == null || !(parentPath.equals(destPath) || parentPath.startsWith(destPath + File.separator))) {
+                        Log.e("TarCompressorUtils", "Refusing entry escaping the destination: " + entryName);
+                        return false;
+                    }
+                    if (!entry.isDirectory() && !entry.isSymbolicLink() && Files.isSymbolicLink(file.toPath())) {
+                        file.delete();
+                    }
+                }
+                catch (IOException e) {
+                    return false;
+                }
 
                 if (onExtractFileListener != null) {
                     file = onExtractFileListener.onExtractFile(file, entry.getSize());
