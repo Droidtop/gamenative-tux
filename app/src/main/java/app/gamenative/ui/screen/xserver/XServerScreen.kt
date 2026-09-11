@@ -5161,7 +5161,7 @@ private fun unpackExecutableFile(
     }
 }
 
-private fun extractArm64ecInputDLLs(context: Context, container: Container) {
+internal fun extractArm64ecInputDLLs(context: Context, container: Container) {
     val inputAsset = "arm64ec_input_dlls.tzst"
     val imageFs = ImageFs.find(context)
     val wineVersion: String? = container.getWineVersion()
@@ -5181,7 +5181,7 @@ private fun extractArm64ecInputDLLs(context: Context, container: Container) {
     }
 }
 
-private fun extractx86_64InputDlls(context: Context, container: Container) {
+internal fun extractx86_64InputDlls(context: Context, container: Container) {
     val inputAsset = "x86_64_input_dlls.tzst"
     val imageFs = ImageFs.find(context)
     val wineVersion: String? = container.getWineVersion()
@@ -5192,7 +5192,7 @@ private fun extractx86_64InputDlls(context: Context, container: Container) {
     } else Log.d("XServerDisplayActivity", "Wine version is not proton-9.0-x86_64, skipping input dlls extraction")
 }
 
-private suspend fun setupWineSystemFiles(
+internal suspend fun setupWineSystemFiles(
     context: Context,
     firstTimeBoot: Boolean,
     screenInfo: ScreenInfo,
@@ -5736,7 +5736,7 @@ private suspend fun extractWinComponentFiles(
     }
 }
 
-private suspend fun extractGraphicsDriverFiles(
+internal suspend fun extractGraphicsDriverFiles(
     context: Context,
     graphicsDriver: String,
     dxwrapper: String,
@@ -6085,7 +6085,7 @@ private suspend fun extractGraphicsDriverFiles(
     }
 }
 
-private fun buildVkBasaltConfig(
+internal fun buildVkBasaltConfig(
     effect: String,
     sharpnessLevel: Int,
     sharpnessDenoise: Int,
@@ -6231,7 +6231,7 @@ private fun readLibraryNameFromExtractedDir(destinationDir: File): String? {
         null
     }
 }
-private fun changeWineAudioDriver(audioDriver: String, container: Container, imageFs: ImageFs) {
+internal fun changeWineAudioDriver(audioDriver: String, container: Container, imageFs: ImageFs) {
     if (audioDriver != container.getExtra("audioDriver")) {
         val rootDir = imageFs.rootDir
         val userRegFile = File(rootDir, ImageFs.WINEPREFIX + "/user.reg")
@@ -6248,7 +6248,7 @@ private fun changeWineAudioDriver(audioDriver: String, container: Container, ima
         container.saveData()
     }
 }
-private fun setImagefsContainerVariant(context: Context, container: Container) {
+internal fun setImagefsContainerVariant(context: Context, container: Container) {
     val imageFs = ImageFs.find(context)
     val containerVariant = container.containerVariant
     imageFs.createVariantFile(containerVariant)
