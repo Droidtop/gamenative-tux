@@ -2,6 +2,7 @@ package app.gamenative.service
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.os.Build
 import android.os.FileObserver
 import app.gamenative.ui.util.AchievementNotificationManager
 import kotlinx.coroutines.CoroutineScope
@@ -60,17 +61,34 @@ class AchievementWatcher(
 
         // Start Watching for the specific achievement JSON file changes
         for (dir in watchDirs) {
-            val observer = object : FileObserver(dir, CLOSE_WRITE or MOVED_TO) {
-                override fun onEvent(event: Int, path: String?) {
-                    if (path == "achievements.json") {
-                        checkForNewUnlocks(File(dir, "achievements.json"))
-                    }
+            val observer = observeDirectory(dir) { path ->
+                if (path == "achievements.json") {
+                    checkForNewUnlocks(File(dir, "achievements.json"))
                 }
             }
             observer.startWatching()
             observers.add(observer)
         }
         Timber.tag("achievements").d("AchievementWatcher started, watching ${watchDirs.size} dirs")
+    }
+
+    /**
+     * FileObserver's File-taking constructor arrived in API 29 and this module's
+     * minSdk is 26, so below Q the path-taking constructor -- deprecated, but the
+     * only one that exists there -- watches the same directory.
+     */
+    private fun observeDirectory(dir: File, handle: (String?) -> Unit): FileObserver {
+        val mask = FileObserver.CLOSE_WRITE or FileObserver.MOVED_TO
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            object : FileObserver(dir, mask) {
+                override fun onEvent(event: Int, path: String?) = handle(path)
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            object : FileObserver(dir.absolutePath, mask) {
+                override fun onEvent(event: Int, path: String?) = handle(path)
+            }
+        }
     }
 
     fun stop() {
