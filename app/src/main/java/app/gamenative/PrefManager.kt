@@ -58,6 +58,16 @@ object PrefManager {
     fun init(context: Context) {
         dataStore = context.datastore
 
+        // Read once before anything below writes. The removals are
+        // launched edits; on a fresh install the first edit creates the
+        // file while the first read has just failed to open it, and
+        // DataStore then sees a file that exists and rethrows the
+        // FileNotFoundException, taking the host app's startup with it
+        // (droidtop on Android 14, first launch after install). A read
+        // with no write in flight takes the missing-file path cleanly and
+        // leaves the value cached for everything after it.
+        runBlocking { dataStore.data.first() }
+
         // Note: Should remove after a few release versions. we've moved to encrypted values.
         val oldPassword = stringPreferencesKey("password")
         removePref(oldPassword)
