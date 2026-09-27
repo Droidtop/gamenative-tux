@@ -114,6 +114,9 @@ open class PluviaApp : SplitCompatApplication() {
         // Initialize GOGConstants
         app.gamenative.service.gog.GOGConstants.init(host)
 
+        // Initialize ItchConstants
+        app.gamenative.service.itch.ItchConstants.init(host)
+
         DownloadService.populateDownloadService(host)
 
         migrateGogAmazonPaths(host)

@@ -1137,6 +1137,13 @@ object PrefManager {
             setPref(SHOW_AMAZON_IN_LIBRARY, value)
         }
 
+    private val SHOW_ITCH_IN_LIBRARY = booleanPreferencesKey("show_itch_in_library")
+    var showItchInLibrary: Boolean
+        get() = getPref(SHOW_ITCH_IN_LIBRARY, true)
+        set(value) {
+            setPref(SHOW_ITCH_IN_LIBRARY, value)
+        }
+
     // Game counts for skeleton loaders
     private val CUSTOM_GAMES_COUNT = intPreferencesKey("custom_games_count")
     var customGamesCount: Int
@@ -1330,6 +1337,7 @@ object PrefManager {
     private val FRONTEND_SYNC_DIR_GOG = stringPreferencesKey("frontend_sync_dir_gog")
     private val FRONTEND_SYNC_DIR_AMAZON = stringPreferencesKey("frontend_sync_dir_amazon")
     private val FRONTEND_SYNC_DIR_CUSTOM = stringPreferencesKey("frontend_sync_dir_custom")
+    private val FRONTEND_SYNC_DIR_ITCH = stringPreferencesKey("frontend_sync_dir_itch")
 
     var frontendSyncDirSteam: String
         get() = getPref(FRONTEND_SYNC_DIR_STEAM, "")
@@ -1351,12 +1359,17 @@ object PrefManager {
         get() = getPref(FRONTEND_SYNC_DIR_CUSTOM, "")
         set(value) { setPref(FRONTEND_SYNC_DIR_CUSTOM, value) }
 
+    var frontendSyncDirItch: String
+        get() = getPref(FRONTEND_SYNC_DIR_ITCH, "")
+        set(value) { setPref(FRONTEND_SYNC_DIR_ITCH, value) }
+
     /** Returns the configured export directory for [source], or an empty string if not set. */
     fun getFrontendSyncDir(source: GameSource): String = when (source) {
         GameSource.STEAM -> frontendSyncDirSteam
         GameSource.EPIC -> frontendSyncDirEpic
         GameSource.GOG -> frontendSyncDirGog
         GameSource.AMAZON -> frontendSyncDirAmazon
+        GameSource.ITCH -> frontendSyncDirItch
         GameSource.CUSTOM_GAME -> frontendSyncDirCustom
     }
 
@@ -1367,6 +1380,7 @@ object PrefManager {
             GameSource.EPIC -> frontendSyncDirEpic = path
             GameSource.GOG -> frontendSyncDirGog = path
             GameSource.AMAZON -> frontendSyncDirAmazon = path
+            GameSource.ITCH -> frontendSyncDirItch = path
             GameSource.CUSTOM_GAME -> frontendSyncDirCustom = path
         }
     }

@@ -525,6 +525,7 @@ fun AppScreen(
             app.gamenative.data.GameSource.GOG -> GOGAppScreen()
             app.gamenative.data.GameSource.EPIC -> EpicAppScreen()
             app.gamenative.data.GameSource.AMAZON -> AmazonAppScreen()
+            app.gamenative.data.GameSource.ITCH -> app.gamenative.ui.screen.library.appscreen.ItchAppScreen()
         }
     }
 

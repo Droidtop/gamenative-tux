@@ -8,6 +8,7 @@ import app.gamenative.data.GameSource
 import app.gamenative.db.dao.AmazonGameDao
 import app.gamenative.db.dao.EpicGameDao
 import app.gamenative.db.dao.GOGGameDao
+import app.gamenative.db.dao.ItchGameDao
 import app.gamenative.db.dao.SteamAppDao
 import app.gamenative.events.AndroidEvent
 import app.gamenative.service.SteamService
@@ -47,6 +48,7 @@ object FrontendSyncManager {
         fun epicGameDao(): EpicGameDao
         fun gogGameDao(): GOGGameDao
         fun amazonGameDao(): AmazonGameDao
+        fun itchGameDao(): ItchGameDao
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -56,6 +58,7 @@ object FrontendSyncManager {
     private lateinit var epicGameDao: EpicGameDao
     private lateinit var gogGameDao: GOGGameDao
     private lateinit var amazonGameDao: AmazonGameDao
+    private lateinit var itchGameDao: ItchGameDao
 
     /** True while a [resyncAll] job is in progress. */
     private val _isSyncing = MutableStateFlow(false)
@@ -88,6 +91,7 @@ object FrontendSyncManager {
         steamAppDao = ep.steamAppDao()
         epicGameDao = ep.epicGameDao()
         gogGameDao = ep.gogGameDao()
+        itchGameDao = ep.itchGameDao()
         amazonGameDao = ep.amazonGameDao()
 
         PluviaApp.events.on<AndroidEvent.LibraryInstallStatusChanged, Unit>(onInstallStatusChanged)
@@ -110,6 +114,7 @@ object FrontendSyncManager {
         GameSource.EPIC -> ".epic"
         GameSource.GOG -> ".gog"
         GameSource.AMAZON -> ".amazon"
+        GameSource.ITCH -> ".itch"
         GameSource.CUSTOM_GAME -> ".pcgame"
     }
 
@@ -203,6 +208,9 @@ object FrontendSyncManager {
                 GameSource.AMAZON -> {
                     amazonGameDao.getInstalledGames().map { it.appId to it.title }
                 }
+                GameSource.ITCH -> {
+                    itchGameDao.getInstalledGames().map { (it.id.toIntOrNull() ?: 0) to it.title }
+                }
             }
 
             val targetDir = File(dir).also { it.mkdirs() }
@@ -229,6 +237,7 @@ object FrontendSyncManager {
         GameSource.EPIC -> epicGameDao.getById(appId)?.title
         GameSource.GOG -> gogGameDao.getById(appId.toString())?.title
         GameSource.AMAZON -> amazonGameDao.getByAppId(appId)?.title
+        GameSource.ITCH -> itchGameDao.getById(appId.toString())?.title
     }
 
     private suspend fun isGameInstalled(appId: Int, source: GameSource): Boolean = when (source) {
@@ -236,6 +245,7 @@ object FrontendSyncManager {
         GameSource.EPIC -> epicGameDao.getById(appId)?.isInstalled ?: false
         GameSource.GOG -> gogGameDao.getById(appId.toString())?.isInstalled ?: false
         GameSource.AMAZON -> amazonGameDao.getByAppId(appId)?.isInstalled ?: false
+        GameSource.ITCH -> itchGameDao.getById(appId.toString())?.isInstalled ?: false
     }
 
     private val invalidFileChars = Regex("""[\\/:*?"<>|]""")

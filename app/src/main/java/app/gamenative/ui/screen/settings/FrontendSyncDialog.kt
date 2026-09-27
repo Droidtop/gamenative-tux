@@ -41,6 +41,7 @@ fun FrontendSyncDialog(onDismiss: () -> Unit) {
         GameSource.EPIC to stringResource(R.string.frontend_sync_source_epic),
         GameSource.GOG to stringResource(R.string.frontend_sync_source_gog),
         GameSource.AMAZON to stringResource(R.string.frontend_sync_source_amazon),
+        GameSource.ITCH to stringResource(R.string.frontend_sync_source_itch),
         GameSource.CUSTOM_GAME to stringResource(R.string.frontend_sync_source_custom),
     )
     // Buffered changes: source → (newPath, deleteOldFiles). Applied only on OK.

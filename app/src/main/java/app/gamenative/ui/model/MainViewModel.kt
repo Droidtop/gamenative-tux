@@ -537,6 +537,10 @@ class MainViewModel @Inject constructor(
                         val game = AmazonService.getAmazonGameByAppId(gameId)
                         game?.heroUrl?.ifEmpty { game.artUrl } ?: ""
                     }
+                    GameSource.ITCH -> {
+                        val game = app.gamenative.service.itch.ItchService.getItchGameOf(context, gameId.toString())
+                        game?.coverUrl ?: ""
+                    }
                     GameSource.CUSTOM_GAME -> {
                         val folderPath = CustomGameScanner.getFolderPathFromAppId(appId) ?: return@withContext ""
                         val folder = java.io.File(folderPath)

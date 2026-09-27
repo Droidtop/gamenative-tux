@@ -268,6 +268,20 @@ class DownloadsViewModel @Inject constructor(
                 }
             }
 
+            GameSource.ITCH -> {
+                app.gamenative.service.itch.ItchService.getItchGameOf(appContext, appId)?.let { game ->
+                    LibraryItem(
+                        appId = libraryAppId,
+                        name = game.title,
+                        iconHash = game.coverUrl,
+                        capsuleImageUrl = game.coverUrl,
+                        headerImageUrl = game.coverUrl,
+                        heroImageUrl = game.coverUrl,
+                        gameSource = GameSource.ITCH,
+                    )
+                }
+            }
+
             GameSource.CUSTOM_GAME -> {
                 CustomGameScanner.scanAsLibraryItems(query = "")
                     .firstOrNull { it.appId == libraryAppId }
@@ -356,6 +370,7 @@ class DownloadsViewModel @Inject constructor(
             GameSource.EPIC -> appId.toIntOrNull()?.let { epicGameDao.getById(it)?.isInstalled == true } ?: false
             GameSource.GOG -> gogGameDao.getById(appId)?.isInstalled == true
             GameSource.AMAZON -> amazonGameDao.getByProductId(appId)?.isInstalled == true
+            GameSource.ITCH -> app.gamenative.service.itch.ItchService.isGameInstalled(appId)
             GameSource.CUSTOM_GAME -> false
         }
     }
@@ -590,6 +605,7 @@ class DownloadsViewModel @Inject constructor(
 
                 GameSource.GOG -> GOGService.cancelDownload(item.appId)
                 GameSource.AMAZON -> AmazonService.cancelDownload(item.appId)
+                GameSource.ITCH -> app.gamenative.service.itch.ItchService.cancelDownload(item.appId)
                 GameSource.CUSTOM_GAME -> Unit
             }
         }
@@ -638,6 +654,11 @@ class DownloadsViewModel @Inject constructor(
                         AmazonConstants.getGameInstallPath(appContext, game.title)
                     }
                     val result = AmazonService.downloadGame(appContext, item.appId, installPath)
+                    result.exceptionOrNull()?.message?.let { recentFailureMessages[key] = it }
+                }
+
+                GameSource.ITCH -> {
+                    val result = app.gamenative.service.itch.ItchService.resumeOrStartDownload(appContext, item.appId)
                     result.exceptionOrNull()?.message?.let { recentFailureMessages[key] = it }
                 }
 
@@ -737,6 +758,12 @@ class DownloadsViewModel @Inject constructor(
                 GameSource.AMAZON -> {
                     AmazonService.cancelDownload(appId)
                     AmazonService.deleteGame(appContext, appId)
+                    scheduleRefreshDownloads()
+                }
+
+                GameSource.ITCH -> {
+                    app.gamenative.service.itch.ItchService.cancelDownload(appId)
+                    app.gamenative.service.itch.ItchService.uninstall(appContext, appId)
                     scheduleRefreshDownloads()
                 }
 

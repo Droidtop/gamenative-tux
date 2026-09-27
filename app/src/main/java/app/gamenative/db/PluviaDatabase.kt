@@ -18,6 +18,7 @@ import app.gamenative.data.SteamUnlockedBranch
 import app.gamenative.data.GOGGame
 import app.gamenative.data.EpicGame
 import app.gamenative.data.AmazonGame
+import app.gamenative.data.ItchGame
 import app.gamenative.data.ModInstall
 import app.gamenative.data.ModOverwriteManifest
 import app.gamenative.data.ModPlacementRecipe
@@ -44,6 +45,7 @@ import app.gamenative.db.dao.SteamUnlockedBranchDao
 import app.gamenative.db.dao.GOGGameDao
 import app.gamenative.db.dao.EpicGameDao
 import app.gamenative.db.dao.AmazonGameDao
+import app.gamenative.db.dao.ItchGameDao
 
 const val DATABASE_NAME = "pluvia.db"
 
@@ -61,6 +63,7 @@ const val DATABASE_NAME = "pluvia.db"
         GOGGame::class,
         EpicGame::class,
         AmazonGame::class,
+        ItchGame::class,
         DownloadingAppInfo::class,
         SteamUnlockedBranch::class,
         ModInstall::class,
@@ -69,7 +72,7 @@ const val DATABASE_NAME = "pluvia.db"
         ModPlacementRecipe::class,
         ModOverwriteManifest::class,
     ],
-    version = 25,
+    version = 26,
     // For db migration, visit https://developer.android.com/training/data-storage/room/migrating-db-versions for more information
     exportSchema = true, // It is better to handle db changes carefully, as GN is getting much more users.
     autoMigrations = [
@@ -92,6 +95,7 @@ const val DATABASE_NAME = "pluvia.db"
         AutoMigration(from = 20, to = 21), // Added steam_file_hash_cache table
         AutoMigration(from = 21, to = 22), // Added GOG vertical_cover_url column
         AutoMigration(from = 22, to = 23), // Added local library play history table
+        AutoMigration(from = 25, to = 26), // Added itch_games table
     ]
 )
 @TypeConverters(
@@ -127,6 +131,8 @@ abstract class PluviaDatabase : RoomDatabase() {
     abstract fun epicGameDao(): EpicGameDao
 
     abstract fun amazonGameDao(): AmazonGameDao
+
+    abstract fun itchGameDao(): ItchGameDao
 
     abstract fun downloadingAppInfoDao(): DownloadingAppInfoDao
 

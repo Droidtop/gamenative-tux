@@ -30,6 +30,8 @@ import app.gamenative.data.EpicGame
 import app.gamenative.data.AmazonGame
 import app.gamenative.db.dao.LibraryPlayHistoryDao
 import app.gamenative.db.dao.SteamAppDao
+import app.gamenative.db.dao.ItchGameDao
+import app.gamenative.data.ItchGame
 import app.gamenative.db.dao.GOGGameDao
 import app.gamenative.db.dao.EpicGameDao
 import app.gamenative.db.dao.AmazonGameDao
@@ -93,6 +95,7 @@ class LibraryViewModel @Inject constructor(
     private val gogGameDao: GOGGameDao,
     private val epicGameDao: EpicGameDao,
     private val amazonGameDao: AmazonGameDao,
+    private val itchGameDao: ItchGameDao,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -136,6 +139,7 @@ class LibraryViewModel @Inject constructor(
     private var gogGameList: List<GOGGame> = emptyList()
     private var epicGameList: List<EpicGame> = emptyList()
     private var amazonGameList: List<AmazonGame> = emptyList()
+    private var itchGameList: List<ItchGame> = emptyList()
     private var playHistoryByAppId: Map<String, Long> = emptyMap()
 
     @Volatile private var steamCollections: List<SteamCollection>? = null
@@ -282,6 +286,17 @@ class LibraryViewModel @Inject constructor(
             }
         }
 
+        viewModelScope.launch(Dispatchers.IO) {
+            itchGameDao.getAll().collect { games ->
+                Timber.tag("LibraryViewModel").d("Collecting ${games.size} itch.io games")
+                val hasChanges = itchGameList.size != games.size || itchGameList != games
+                itchGameList = games
+                if (hasChanges) {
+                    onFilterApps(paginationCurrentPage)
+                }
+            }
+        }
+
         // Load any cached collections immediately, then observe live updates.
         SteamCollectionRepository.loadFromCache()
         viewModelScope.launch(Dispatchers.IO) {
@@ -400,6 +415,11 @@ class LibraryViewModel @Inject constructor(
                 val newValue = !current.showAmazonInLibrary
                 PrefManager.showAmazonInLibrary = newValue
                 _state.update { it.copy(showAmazonInLibrary = newValue) }
+            }
+            GameSource.ITCH -> {
+                val newValue = !current.showItchInLibrary
+                PrefManager.showItchInLibrary = newValue
+                _state.update { it.copy(showItchInLibrary = newValue) }
             }
         }
         onFilterApps(paginationCurrentPage)
@@ -959,10 +979,55 @@ class LibraryViewModel @Inject constructor(
                     )
                 }
 
+            // itch.io games
+            val filteredItchGames = itchGameList
+                .asSequence()
+                .filter { game ->
+                    if (currentState.searchQuery.isNotEmpty()) {
+                        matches(game.title, currentState.searchQuery)
+                    } else {
+                        true
+                    }
+                }
+                .filter { game ->
+                    val installedOnly = currentState.currentTab.installedOnly ||
+                        currentState.appInfoSortType.contains(AppFilter.INSTALLED)
+                    if (installedOnly) {
+                        game.isInstalled
+                    } else {
+                        true
+                    }
+                }
+                .toList()
+
+            val itchEntries = filteredItchGames
+                .filter { passesCompatibleFilter(it.title) }
+                .filter { passesStatsFilters(currentState, GameSource.ITCH, it.title) }
+                .map { game ->
+                    val appId = "${GameSource.ITCH.name}_${game.id}"
+                    LibraryEntry(
+                        item = LibraryItem(
+                            index = 0,
+                            appId = appId,
+                            name = game.title,
+                            iconHash = game.coverUrl,
+                            capsuleImageUrl = game.coverUrl,
+                            headerImageUrl = game.coverUrl,
+                            heroImageUrl = game.coverUrl,
+                            isShared = false,
+                            gameSource = GameSource.ITCH,
+                            sizeBytes = game.sizeBytes,
+                        ),
+                        isInstalled = game.isInstalled,
+                        lastPlayed = lastPlayedFor(appId),
+                    )
+                }
+
             // Calculate installed counts
             val gogInstalledCount = filteredGOGGames.count { it.isInstalled }
             val epicInstalledCount = filteredEpicGames.count { it.isInstalled }
             val amazonInstalledCount = filteredAmazonGames.count { it.isInstalled }
+            val itchInstalledCount = filteredItchGames.count { it.isInstalled }
             // Save game counts for skeleton loaders (only when not searching, to get accurate counts)
             // This needs to happen before filtering by source, so we save the total counts
             if (currentState.searchQuery.isEmpty()) {
@@ -1008,6 +1073,12 @@ class LibraryViewModel @Inject constructor(
             } else {
                 currentTab.showAmazon
             }) && AmazonService.hasStoredCredentials(context)
+
+            val includeItch = (if (currentTab == app.gamenative.ui.enums.LibraryTab.ALL) {
+                currentState.showItchInLibrary
+            } else {
+                currentTab.showItch
+            }) && app.gamenative.service.itch.ItchService.hasStoredCredentials(context)
 
             // Combine both lists and apply sort option
             val sortComparator: Comparator<LibraryEntry> = when (currentState.currentSortOption) {
@@ -1060,6 +1131,7 @@ class LibraryViewModel @Inject constructor(
                 if (includeGOG && !steamCollectionSelected) addAll(gogEntries)
                 if (includeEpic && !steamCollectionSelected) addAll(epicEntries)
                 if (includeAmazon && !steamCollectionSelected) addAll(amazonEntries)
+                if (includeItch && !steamCollectionSelected) addAll(itchEntries)
             }.let { entries ->
                 if (currentTab == app.gamenative.ui.enums.LibraryTab.FAVORITES) {
                     FavoritesUtils.filter(entries, favoriteIds) { it.item.appId }
@@ -1154,6 +1226,7 @@ class LibraryViewModel @Inject constructor(
                 if (GOGService.hasStoredCredentials(context)) addAll(gogEntries)
                 if (EpicService.hasStoredCredentials(context)) addAll(epicEntries)
                 if (AmazonService.hasStoredCredentials(context)) addAll(amazonEntries)
+                if (app.gamenative.service.itch.ItchService.hasStoredCredentials(context)) addAll(itchEntries)
             }.mapTo(mutableSetOf()) { it.item.appId }
             if (generation != filterGeneration.get()) return@launch
             favoriteEligibleAppIds = favoriteEligible
@@ -1171,11 +1244,13 @@ class LibraryViewModel @Inject constructor(
                         (if (currentState.showCustomGamesInLibrary) customEntries.size else 0) +
                         (if (currentState.showGOGInLibrary && GOGService.hasStoredCredentials(context)) gogEntries.size else 0) +
                         (if (currentState.showEpicInLibrary && EpicService.hasStoredCredentials(context)) epicEntries.size else 0) +
-                        (if (currentState.showAmazonInLibrary && AmazonService.hasStoredCredentials(context)) amazonEntries.size else 0),
+                        (if (currentState.showAmazonInLibrary && AmazonService.hasStoredCredentials(context)) amazonEntries.size else 0) +
+                        (if (currentState.showItchInLibrary && app.gamenative.service.itch.ItchService.hasStoredCredentials(context)) itchEntries.size else 0),
                     steamCount = if (currentState.showSteamInLibrary) steamEntries.size else 0,
                     gogCount = if (currentState.showGOGInLibrary && GOGService.hasStoredCredentials(context)) gogEntries.size else 0,
                     epicCount = if (currentState.showEpicInLibrary && EpicService.hasStoredCredentials(context)) epicEntries.size else 0,
                     amazonCount = if (currentState.showAmazonInLibrary && AmazonService.hasStoredCredentials(context)) amazonEntries.size else 0,
+                    itchCount = if (currentState.showItchInLibrary && app.gamenative.service.itch.ItchService.hasStoredCredentials(context)) itchEntries.size else 0,
                     localCount = if (currentState.showCustomGamesInLibrary) customEntries.size else 0,
                     steamCollectionCounts = steamCollectionCounts,
                     favoritesCount = FavoritesUtils.countPresent(favoriteIds, favoriteEligible),

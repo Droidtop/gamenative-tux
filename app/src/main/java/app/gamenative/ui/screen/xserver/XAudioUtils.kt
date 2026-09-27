@@ -38,6 +38,7 @@ object XAudioUtils {
                     EpicService.getInstallPath(gameId)
                 }
                 GameSource.AMAZON -> AmazonService.getInstallPath(appId)
+                GameSource.ITCH -> app.gamenative.service.itch.ItchService.getInstallPath(appId)
                 GameSource.CUSTOM_GAME -> CustomGameScanner.getFolderPathFromAppId(appId)
             }
         } catch (e: Exception) {

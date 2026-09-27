@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -169,6 +170,7 @@ fun GameSourceIcon(
             GameSource.GOG -> Icon(painter = painterResource(R.drawable.ic_gog), contentDescription = "Gog", modifier = Modifier.size(iconSize.dp).alpha(0.7f))
             GameSource.EPIC -> Icon(painter = painterResource(R.drawable.ic_epic), contentDescription = "Epic", modifier = Modifier.size(iconSize.dp).alpha(0.7f))
             GameSource.AMAZON -> Icon(imageVector = Icons.Filled.Amazon, contentDescription = "Amazon", modifier = Modifier.size(iconSize.dp).alpha(0.7f))
+            GameSource.ITCH -> Icon(imageVector = Icons.Filled.Extension, contentDescription = "itch.io", modifier = Modifier.size(iconSize.dp).alpha(0.7f))
         }
     }
 }

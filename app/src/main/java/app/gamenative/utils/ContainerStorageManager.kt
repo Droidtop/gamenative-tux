@@ -12,6 +12,7 @@ import app.gamenative.db.dao.AmazonGameDao
 import app.gamenative.db.dao.AppInfoDao
 import app.gamenative.db.dao.EpicGameDao
 import app.gamenative.db.dao.GOGGameDao
+import app.gamenative.db.dao.ItchGameDao
 import app.gamenative.db.dao.SteamAppDao
 import app.gamenative.enums.AppType
 import app.gamenative.enums.OSArch
@@ -24,6 +25,8 @@ import app.gamenative.service.epic.EpicConstants
 import app.gamenative.service.epic.EpicService
 import app.gamenative.service.gog.GOGConstants
 import app.gamenative.service.gog.GOGService
+import app.gamenative.service.itch.ItchConstants
+import app.gamenative.service.itch.ItchService
 import com.winlator.core.FileUtils
 import com.winlator.xenvironment.ImageFs
 import dagger.hilt.EntryPoint
@@ -48,6 +51,7 @@ object ContainerStorageManager {
     @InstallIn(SingletonComponent::class)
     interface StorageManagerDaoEntryPoint {
         fun steamAppDao(): SteamAppDao
+        fun itchGameDao(): ItchGameDao
         fun appInfoDao(): AppInfoDao
         fun gogGameDao(): GOGGameDao
         fun epicGameDao(): EpicGameDao
@@ -302,6 +306,14 @@ object ContainerStorageManager {
         } else {
             null
         }
+        val itchGame = if (gameSource == GameSource.ITCH) {
+            val gameId = extractGameId(normalizedContainerId)?.toString()
+                ?: return@withContext Result.failure(IllegalArgumentException("Invalid itch.io game id"))
+            entryPoint.itchGameDao().getById(gameId)
+                ?: return@withContext Result.failure(IllegalStateException("itch.io game not found in database"))
+        } else {
+            null
+        }
 
         Timber.tag("ContainerStorageManager").i(
             "Moving game %s from %s to %s",
@@ -340,6 +352,12 @@ object ContainerStorageManager {
             GameSource.AMAZON -> {
                 amazonGame?.let {
                     entryPoint.amazonGameDao().markAsInstalled(it.productId, targetDir.absolutePath, installSize, it.versionId)
+                }
+            }
+
+            GameSource.ITCH -> {
+                itchGame?.let {
+                    entryPoint.itchGameDao().update(it.copy(installPath = targetDir.absolutePath, sizeBytes = installSize))
                 }
             }
 
@@ -447,6 +465,12 @@ object ContainerStorageManager {
                     result
                 }
 
+                GameSource.ITCH -> {
+                    val result = ItchService.uninstall(context, gameId.toString())
+                    if (result.isSuccess && entry.hasContainer) removeContainer(context, entry.containerId)
+                    result
+                }
+
                 GameSource.CUSTOM_GAME -> Result.failure(UnsupportedOperationException("Custom games are not supported"))
             }
 
@@ -548,6 +572,29 @@ object ContainerStorageManager {
             games.forEach { installedGames[it.appId] = it }
         }.onFailure { e ->
             Timber.tag("ContainerStorageManager").w(e, "Failed to load installed Amazon games")
+        }
+
+        runCatching {
+            entryPoint.itchGameDao().getAllAsList()
+                .asSequence()
+                .filter { it.isInstalled && it.installPath.isNotBlank() }
+                .mapNotNull { game ->
+                    val installDir = File(game.installPath)
+                    if (!installDir.exists()) return@mapNotNull null
+                    InstalledGame(
+                        appId = "${GameSource.ITCH.name}_${game.id}",
+                        displayName = game.title.ifBlank { game.id },
+                        gameSource = GameSource.ITCH,
+                        installPath = installDir.absolutePath,
+                        iconUrl = game.coverUrl,
+                        installSizeBytes = game.sizeBytes.takeIf { it > 0L },
+                    )
+                }
+                .toList()
+        }.onSuccess { games ->
+            games.forEach { installedGames[it.appId] = it }
+        }.onFailure { e ->
+            Timber.tag("ContainerStorageManager").w(e, "Failed to load installed itch.io games")
         }
 
         runCatching {
@@ -775,6 +822,11 @@ object ContainerStorageManager {
                 MoveTarget.EXTERNAL -> AmazonConstants.externalAmazonGamesPath()
             }
 
+            GameSource.ITCH -> when (target) {
+                MoveTarget.INTERNAL -> ItchConstants.internalItchGamesPath
+                MoveTarget.EXTERNAL -> ItchConstants.externalItchGamesPath
+            }
+
             GameSource.CUSTOM_GAME -> null
         }
     }
@@ -795,6 +847,7 @@ object ContainerStorageManager {
             GameSource.GOG -> listOf(GOGConstants.internalGOGGamesPath)
             GameSource.EPIC -> listOf(EpicConstants.internalEpicGamesPath(context))
             GameSource.AMAZON -> listOf(AmazonConstants.internalAmazonGamesPath(context))
+            GameSource.ITCH -> listOf(ItchConstants.internalItchGamesPath)
             GameSource.CUSTOM_GAME -> emptyList()
         }
 
@@ -818,6 +871,7 @@ object ContainerStorageManager {
                 GameSource.GOG -> if (PrefManager.externalStoragePath.isNotBlank()) add(GOGConstants.externalGOGGamesPath)
                 GameSource.EPIC -> if (PrefManager.externalStoragePath.isNotBlank()) add(EpicConstants.externalEpicGamesPath())
                 GameSource.AMAZON -> if (PrefManager.externalStoragePath.isNotBlank()) add(AmazonConstants.externalAmazonGamesPath())
+                GameSource.ITCH -> if (PrefManager.externalStoragePath.isNotBlank()) add(ItchConstants.externalItchGamesPath)
                 GameSource.CUSTOM_GAME -> Unit
             }
 
@@ -839,6 +893,7 @@ object ContainerStorageManager {
             GameSource.GOG -> listOf("GOG", "games", "common")
             GameSource.EPIC -> listOf("Epic", "games")
             GameSource.AMAZON -> listOf("Amazon", "games")
+            GameSource.ITCH -> listOf("Itch", "games", "common")
             GameSource.CUSTOM_GAME -> emptyList()
         }
         if (expectedRootSegments.isEmpty()) return null
@@ -955,6 +1010,7 @@ object ContainerStorageManager {
         containerId.startsWith("GOG_") -> GameSource.GOG
         containerId.startsWith("EPIC_") -> GameSource.EPIC
         containerId.startsWith("AMAZON_") -> GameSource.AMAZON
+        containerId.startsWith("ITCH_") -> GameSource.ITCH
         else -> null
     }
 
@@ -1019,6 +1075,17 @@ object ContainerStorageManager {
                     installPath = game?.installPath,
                     iconUrl = game?.artUrl.orEmpty(),
                     known = game != null,
+                )
+            }
+
+            GameSource.ITCH -> {
+                val idStr = gameId.toString()
+                val installPath = ItchService.getInstallPath(idStr).takeIf { it.isNotBlank() }
+                ResolvedGame(
+                    name = ItchService.getCachedTitle(idStr),
+                    installPath = installPath,
+                    iconUrl = ItchService.getCachedCoverUrl(idStr).orEmpty(),
+                    known = ItchService.getCachedTitle(idStr) != null,
                 )
             }
         }

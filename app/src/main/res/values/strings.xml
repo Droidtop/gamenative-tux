@@ -120,6 +120,7 @@
     <string name="tab_gog">GOG</string>
     <string name="tab_epic">Epic</string>
     <string name="tab_amazon">Amazon</string>
+    <string name="tab_itch">itch.io</string>
     <string name="tab_installed">Installed</string>
     <string name="tab_local">Custom</string>
     <string name="library_tab_with_count">%1$s (%2$d)</string>
@@ -2217,6 +2218,7 @@
     <string name="frontend_sync_source_epic">Epic Games</string>
     <string name="frontend_sync_source_gog">GOG</string>
     <string name="frontend_sync_source_amazon">Amazon Games</string>
+    <string name="frontend_sync_source_itch">itch.io</string>
     <string name="frontend_sync_source_custom">Custom Games</string>
     <string name="frontend_sync_not_set">Not set</string>
     <string name="frontend_sync_clear_confirm_title">Remove old export files?</string>

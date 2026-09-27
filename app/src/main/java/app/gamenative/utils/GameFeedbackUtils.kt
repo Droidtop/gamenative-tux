@@ -65,6 +65,10 @@ object GameFeedbackUtils {
                     val appInfo = SteamService.getAppInfoOf(gameId)
                     appInfo?.name ?: ""
                 }
+                GameSource.ITCH -> {
+                    val game = app.gamenative.service.itch.ItchService.getItchGameOf(context, gameId.toString())
+                    game?.title ?: ""
+                }
             }
 
             if (gameName.isEmpty()) {
