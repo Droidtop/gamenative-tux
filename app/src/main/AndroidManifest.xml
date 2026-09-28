@@ -131,6 +131,12 @@
             android:exported="false"
             android:theme="@style/Theme.Pluvia" />
 
+        <!-- itch.io API Key Entry (in-app text field; verifies key against /profile) -->
+        <activity
+            android:name=".ui.screen.auth.ItchAuthActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Pluvia" />
+
         <!-- Launcher icon aliases to allow switching app icon at runtime -->
         <activity-alias
             android:name=".MainActivityAliasDefault"

@@ -251,12 +251,15 @@ fun SystemMenu(
     gogLoggedIn: Boolean,
     epicLoggedIn: Boolean,
     amazonLoggedIn: Boolean,
+    itchLoggedIn: Boolean,
     onGogLoginClick: () -> Unit,
     onGogLogoutClick: () -> Unit,
     onEpicLoginClick: () -> Unit,
     onEpicLogoutClick: () -> Unit,
     onAmazonLoginClick: () -> Unit,
     onAmazonLogoutClick: () -> Unit,
+    onItchLoginClick: () -> Unit,
+    onItchLogoutClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -707,6 +710,24 @@ fun SystemMenu(
                             },
                             isDestructive = amazonLoggedIn,
                         )
+
+                        // itch.io
+                        SystemMenuItem(
+                            text = stringResource(
+                                if (itchLoggedIn) R.string.itch_settings_logout_title
+                                else R.string.itch_settings_login_title,
+                            ),
+                            icon = if (itchLoggedIn) {
+                                Icons.AutoMirrored.Filled.Logout
+                            } else {
+                                Icons.AutoMirrored.Filled.Login
+                            },
+                            onClick = {
+                                if (itchLoggedIn) onItchLogoutClick() else onItchLoginClick()
+                                onDismiss()
+                            },
+                            isDestructive = itchLoggedIn,
+                        )
                     }
 
                     // Gamepad hint at bottom (only on expanded screens)
@@ -778,12 +799,15 @@ private fun Preview_SystemMenu() {
                     gogLoggedIn = false,
                     epicLoggedIn = false,
                     amazonLoggedIn = false,
+                    itchLoggedIn = false,
                     onGogLoginClick = { },
                     onGogLogoutClick = { },
                     onEpicLoginClick = { },
                     onEpicLogoutClick = { },
                     onAmazonLoginClick = { },
                     onAmazonLogoutClick = { },
+                    onItchLoginClick = { },
+                    onItchLogoutClick = { },
                 )
             }
         }

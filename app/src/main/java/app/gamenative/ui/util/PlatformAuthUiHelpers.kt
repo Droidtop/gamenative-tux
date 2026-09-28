@@ -5,6 +5,8 @@ import app.gamenative.R
 import app.gamenative.service.amazon.AmazonService
 import app.gamenative.service.epic.EpicService
 import app.gamenative.service.gog.GOGService
+import app.gamenative.service.itch.ItchService
+import app.gamenative.ui.util.SnackbarManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -146,6 +148,41 @@ object PlatformAuthUiHelpers {
                         R.string.amazon_logout_failed,
                         e.message ?: "Unknown",
                     )
+                    callbacks.onError(message)
+                    SnackbarManager.show(message)
+                }
+            }
+        }
+    }
+
+    fun logoutItch(
+        context: Context,
+        scope: CoroutineScope,
+        callbacks: PlatformLogoutCallbacks = PlatformLogoutCallbacks(),
+    ) {
+        callbacks.onLoadingChange(true)
+        scope.launch {
+            try {
+                Timber.d("[PlatformAuthUiHelpers][Itch] Starting logout...")
+                val result = ItchService.signOut(context)
+                withContext(Dispatchers.Main) {
+                    callbacks.onLoadingChange(false)
+                    if (result) {
+                        Timber.i("[PlatformAuthUiHelpers][Itch] Logout successful")
+                        callbacks.onSuccess()
+                        SnackbarManager.show(context.getString(R.string.itch_logout_success))
+                    } else {
+                        Timber.w("[PlatformAuthUiHelpers][Itch] Logout failed")
+                        val message = context.getString(R.string.itch_logout_failed, "Unknown error")
+                        callbacks.onError(message)
+                        SnackbarManager.show(message)
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "[PlatformAuthUiHelpers][Itch] Exception during logout")
+                withContext(Dispatchers.Main) {
+                    callbacks.onLoadingChange(false)
+                    val message = context.getString(R.string.itch_logout_failed, e.message ?: "Unknown error")
                     callbacks.onError(message)
                     SnackbarManager.show(message)
                 }

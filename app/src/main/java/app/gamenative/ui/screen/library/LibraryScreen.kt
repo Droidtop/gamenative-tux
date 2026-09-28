@@ -110,6 +110,7 @@ import app.gamenative.ui.screen.library.components.toggleFavorite
 import app.gamenative.ui.screen.auth.AmazonOAuthActivity
 import app.gamenative.ui.screen.auth.EpicOAuthActivity
 import app.gamenative.ui.screen.auth.GOGOAuthActivity
+import app.gamenative.ui.screen.auth.ItchAuthActivity
 import app.gamenative.ui.screen.library.components.SystemMenu
 import app.gamenative.ui.theme.PluviaTheme
 import app.gamenative.ui.util.PlatformAuthUiHelpers
@@ -323,6 +324,32 @@ private fun LibraryScreenContent(
                 },
                 onDialogClose = { },
             )
+        }
+    }
+
+    val itchOAuthLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode != android.app.Activity.RESULT_OK) {
+            val message = result.data?.getStringExtra(ItchAuthActivity.EXTRA_ERROR)
+                ?: context.getString(R.string.itch_login_cancel)
+            SnackbarManager.show(message)
+            return@rememberLauncherForActivityResult
+        }
+        val apiKey = result.data?.getStringExtra(ItchAuthActivity.EXTRA_API_KEY)
+        if (apiKey == null) {
+            val message = result.data?.getStringExtra(ItchAuthActivity.EXTRA_ERROR)
+                ?: context.getString(R.string.itch_login_cancel)
+            SnackbarManager.show(message)
+            return@rememberLauncherForActivityResult
+        }
+        lifecycleScope.launch {
+            val result = app.gamenative.service.itch.ItchAuthManager.signIn(context, apiKey)
+            result.onSuccess { username ->
+                SnackbarManager.show(context.getString(R.string.itch_login_success_title))
+            }.onFailure { error ->
+                SnackbarManager.show("itch.io sign-in failed: ${error.message}")
+            }
         }
     }
 
@@ -1046,6 +1073,7 @@ private fun LibraryScreenContent(
                     LibraryTab.GOG -> !GOGService.hasStoredCredentials(context)
                     LibraryTab.EPIC -> !EpicService.hasStoredCredentials(context)
                     LibraryTab.AMAZON -> !AmazonService.hasStoredCredentials(context)
+                    LibraryTab.ITCH -> !app.gamenative.service.itch.ItchService.hasStoredCredentials(context)
                     LibraryTab.LOCAL -> PrefManager.customGamesCount == 0
                     else -> false
                 }
@@ -1076,12 +1104,17 @@ private fun LibraryScreenContent(
                             R.string.amazon_settings_login_title,
                             { amazonOAuthLauncher.launch(Intent(context, AmazonOAuthActivity::class.java)) },
                         )
+                        LibraryTab.ITCH -> Triple(
+                            R.string.library_source_not_logged_in_itch,
+                            R.string.itch_settings_login_title,
+                            { itchOAuthLauncher.launch(Intent(context, ItchAuthActivity::class.java)) },
+                        )
                         LibraryTab.LOCAL -> Triple(
                             R.string.library_source_no_custom_games,
                             R.string.add_custom_game_dialog_title,
                             onAddCustomGameClick,
                         )
-                        else -> throw IllegalStateException("showEmptyStateSplash is true only for Steam/GOG/Epic/Amazon/LOCAL")
+                        else -> throw IllegalStateException("showEmptyStateSplash is true only for Steam/GOG/Epic/Amazon/Itch/LOCAL")
                     }
                     LibrarySourceNotLoggedInSplash(
                         messageResId = messageResId,
@@ -1333,6 +1366,7 @@ private fun LibraryScreenContent(
             val gogLoggedIn = app.gamenative.service.gog.GOGAuthManager.hasStoredCredentials(context)
             val epicLoggedIn = app.gamenative.service.epic.EpicAuthManager.hasStoredCredentials(context)
             val amazonLoggedIn = app.gamenative.service.amazon.AmazonAuthManager.hasStoredCredentials(context)
+            val itchLoggedIn = app.gamenative.service.itch.ItchService.hasStoredCredentials(context)
 
             SystemMenu(
                 isOpen = isSystemMenuOpen,
@@ -1345,6 +1379,7 @@ private fun LibraryScreenContent(
                 gogLoggedIn = gogLoggedIn,
                 epicLoggedIn = epicLoggedIn,
                 amazonLoggedIn = amazonLoggedIn,
+                itchLoggedIn = itchLoggedIn,
                 onGogLoginClick = {
                     gogOAuthLauncher.launch(Intent(context, GOGOAuthActivity::class.java))
                 },
@@ -1370,6 +1405,16 @@ private fun LibraryScreenContent(
                 },
                 onAmazonLogoutClick = {
                     PlatformAuthUiHelpers.logoutAmazon(
+                        context = context,
+                        scope = lifecycleScope,
+                        callbacks = PlatformLogoutCallbacks(),
+                    )
+                },
+                onItchLoginClick = {
+                    itchOAuthLauncher.launch(Intent(context, ItchAuthActivity::class.java))
+                },
+                onItchLogoutClick = {
+                    PlatformAuthUiHelpers.logoutItch(
                         context = context,
                         scope = lifecycleScope,
                         callbacks = PlatformLogoutCallbacks(),
