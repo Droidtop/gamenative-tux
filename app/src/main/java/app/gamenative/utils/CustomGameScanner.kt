@@ -704,28 +704,18 @@ object CustomGameScanner {
     }
 
     /**
-     * Reads the game ID from the .gamenative file in the given folder.
-     * Returns null if the file doesn't exist or doesn't contain a valid ID.
+     * Reads the remembered game ID through the installed [CustomGameIdStore] (by default the
+     * .gamenative file in the given folder).
+     * Returns null if none is remembered.
      */
-    private fun readGameIdFromFile(folder: File): Int? {
-        return app.gamenative.utils.GameMetadataManager.getAppId(folder)
-    }
+    private fun readGameIdFromFile(folder: File): Int? = CustomGameIdStores.current.read(folder)
 
     /**
-     * Writes the game ID to the .gamenative file in the given folder.
-     * Preserves other metadata fields (steamgriddbFetched, releaseDate) if they exist.
+     * Stores the game ID through the installed [CustomGameIdStore]; by default that is the
+     * `.gamenative` file in the given folder, preserving its other metadata fields.
      */
     private fun writeGameIdToFile(folder: File, gameId: Int) {
-        // Read existing metadata to preserve other fields
-        val existing = app.gamenative.utils.GameMetadataManager.read(folder)
-        val metadata = if (existing != null) {
-            // Preserve existing metadata fields, only update appId
-            existing.copy(appId = gameId)
-        } else {
-            // Create new metadata with just the appId
-            app.gamenative.utils.GameMetadata(appId = gameId)
-        }
-        app.gamenative.utils.GameMetadataManager.write(folder, metadata)
+        CustomGameIdStores.current.write(folder, gameId)
     }
 
     /**
