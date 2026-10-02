@@ -218,6 +218,7 @@ public class PresentExtension implements Extension {
         static final byte QUERY_VERSION = 0;
         static final byte PRESENT_PIXMAP = 1;
         static final byte SELECT_INPUT = 3;
+        static final byte QUERY_CAPABILITIES = 4;
     }
 
     private static class Event {
@@ -285,6 +286,27 @@ public class PresentExtension implements Extension {
             outputStream.writeInt(1);
             outputStream.writeInt(0);
             outputStream.writePad(16);
+        }
+    }
+
+    /**
+     * PresentQueryCapabilities (Present 1.0, minor opcode 4). Mesa's X11
+     * Vulkan WSI asks it while it sets up a swapchain and treats an error as
+     * fatal, so a guest Vulkan driver that presents through X (lavapipe on an
+     * x86_64 device) could never create one. This server flips no buffers
+     * asynchronously and takes no fences or UST timestamps, so it reports no
+     * optional capability at all.
+     */
+    private static void queryCapabilities(XClient client, XInputStream inputStream, XOutputStream outputStream) throws IOException, XRequestError {
+        inputStream.skip(4);
+
+        try (XStreamLock lock = outputStream.lock()) {
+            outputStream.writeByte(RESPONSE_CODE_SUCCESS);
+            outputStream.writeByte((byte)0);
+            outputStream.writeShort(client.getSequenceNumber());
+            outputStream.writeInt(0);
+            outputStream.writeInt(0);
+            outputStream.writePad(20);
         }
     }
 
@@ -400,6 +422,9 @@ public class PresentExtension implements Extension {
                 try (XLock lock = client.xServer.lock(XServer.Lockable.WINDOW_MANAGER)) {
                     selectInput(client, inputStream, outputStream);
                 }
+                break;
+            case ClientOpcodes.QUERY_CAPABILITIES:
+                queryCapabilities(client, inputStream, outputStream);
                 break;
             default:
                 throw new BadImplementation();
