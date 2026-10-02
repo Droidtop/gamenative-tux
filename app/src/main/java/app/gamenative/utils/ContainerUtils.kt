@@ -46,6 +46,21 @@ object ContainerUtils {
         listOf(WRAPPER_TURNIP_CAPABLE, WRAPPER_ADRENO_8ELITE_GEN5, WRAPPER_ADRENO_8ELITE, WRAPPER_ADRENO_A12)
 
     fun setContainerDefaults(context: Context) {
+        // An x86_64 device runs an x86_64 Wine directly (X86_64GuestLibs); an
+        // arm64ec build is ARM code and cannot run there, and none of the Adreno
+        // or Wrapper drivers below exist for x86. Software Vulkan is the one
+        // Vulkan driver every x86_64 device can load (X86_64Graphics).
+        if (X86_64GuestLibs.isX86_64Host()) {
+            DefaultVersion.VARIANT = Container.BIONIC
+            DefaultVersion.WINE_VERSION = "proton-9.0-x86_64"
+            DefaultVersion.DEFAULT_GRAPHICS_DRIVER = X86_64Graphics.LAVAPIPE
+            DefaultVersion.DXVK = "2.6.1-gplasync"
+            DefaultVersion.VKD3D = "2.14.1"
+            DefaultVersion.WRAPPER = "System"
+            DefaultVersion.STEAM_TYPE = Container.STEAM_TYPE_NORMAL
+            DefaultVersion.ASYNC_CACHE = "0"
+            return
+        }
         // Override default driver and DXVK version based on Turnip capability
         if (GPUInformation.isTurnipCapable(context)) {
             DefaultVersion.VARIANT = Container.BIONIC
@@ -93,6 +108,43 @@ object ContainerUtils {
             DefaultVersion.STEAM_TYPE = Container.STEAM_TYPE_LIGHT
             DefaultVersion.ASYNC_CACHE = "0"
         }
+    }
+
+    /**
+     * This device's recommended container, from [setContainerDefaults], for
+     * an embedder that creates containers without this app's own startup.
+     *
+     * Read from [DefaultVersion] itself rather than from [ContainerData]'s or
+     * [Container]'s defaults: those are `static final` copies taken when the
+     * class loads, which can be before [setContainerDefaults] runs, and then
+     * still say glibc, the main Wine and Vortek. The emulator follows the Wine
+     * build the way the container dialog couples them: FEXCore for an arm64ec
+     * build, Box64 for an x86_64 one.
+     */
+    fun deviceDefaultContainerData(context: Context): ContainerData {
+        setContainerDefaults(context)
+        val graphicsDriverConfig = KeyValueSet(Container.DEFAULT_GRAPHICSDRIVERCONFIG).apply {
+            put("version", DefaultVersion.WRAPPER)
+        }
+        val dxwrapperConfig = KeyValueSet(Container.DEFAULT_DXWRAPPERCONFIG).apply {
+            put("version", DefaultVersion.DXVK)
+            put("vkd3dVersion", DefaultVersion.VKD3D)
+            put("async", DefaultVersion.ASYNC)
+            put("asyncCache", DefaultVersion.ASYNC_CACHE)
+        }
+        val arm64ec = DefaultVersion.WINE_VERSION.contains("arm64ec", ignoreCase = true)
+        return ContainerData(
+            containerVariant = DefaultVersion.VARIANT,
+            wineVersion = DefaultVersion.WINE_VERSION,
+            graphicsDriver = com.winlator.core.StringUtils.parseIdentifier(DefaultVersion.DEFAULT_GRAPHICS_DRIVER),
+            graphicsDriverConfig = graphicsDriverConfig.toString(),
+            dxwrapper = Container.DEFAULT_DXWRAPPER,
+            dxwrapperConfig = dxwrapperConfig.toString(),
+            emulator = if (arm64ec) "FEXCore" else "Box64",
+            box64Version = DefaultVersion.BOX64,
+            fexcoreVersion = DefaultVersion.FEXCORE,
+            steamType = DefaultVersion.STEAM_TYPE,
+        )
     }
 
     fun getGPUCards(context: Context): Map<Int, GpuInfo> {
