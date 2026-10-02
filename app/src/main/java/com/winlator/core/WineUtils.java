@@ -36,7 +36,11 @@ public abstract class WineUtils {
         FileUtils.symlink(zTarget, dosdevicesPath + "/z:");
 
 
-        // Auto-fix containers missing D: and E: drives
+        // Auto-fix containers missing D: and E: drives. E: is this app's own
+        // storage folder, taken from the context rather than written as
+        // /data/data/app.gamenative/storage, so the fork works under any
+        // package name.
+        File ownStorage = new File(context.getDataDir(), "storage");
         String currentDrives = container.getDrives();
         if (!currentDrives.contains("D:") || !currentDrives.contains("E:")) {
             Log.d("WineUtils", "Container missing D: or E: drives, adding them...");
@@ -45,7 +49,7 @@ public abstract class WineUtils {
                 missingDrives += "D:" + android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
             }
             if (!currentDrives.contains("E:")) {
-                missingDrives += "E:/data/data/app.gamenative/storage";
+                missingDrives += "E:" + ownStorage.getAbsolutePath();
             }
             String updatedDrives = missingDrives + currentDrives;
             container.setDrives(updatedDrives);
@@ -56,8 +60,11 @@ public abstract class WineUtils {
         String gameDirectoryPath = null;
         for (String[] drive : container.drivesIterator()) {
             File linkTarget = new File(drive[1]);
+            // Containers saved before the line above carry the old spelling
+            // of the same folder; it means this app's own storage.
+            if (linkTarget.getAbsolutePath().endsWith("/app.gamenative/storage")) linkTarget = ownStorage;
             String path = linkTarget.getAbsolutePath();
-            if (!linkTarget.isDirectory() && path.endsWith("/app.gamenative/storage")) {
+            if (!linkTarget.isDirectory() && linkTarget.equals(ownStorage)) {
                 linkTarget.mkdirs();
                 FileUtils.chmod(linkTarget, 0771);
             }
