@@ -5756,6 +5756,10 @@ internal suspend fun extractGraphicsDriverFiles(
     firstTimeBoot: Boolean,
     vkbasaltConfig: String,
 ) {
+    // Every driver below (Turnip, Adreno, Vortek, the Wrapper ICDs, vkBasalt)
+    // is an aarch64 library. An x86_64 guest gets its driver from
+    // X86_64Graphics when the launcher builds its environment.
+    if (X86_64GuestLibs.isX86_64Host()) return
     if (container.containerVariant.equals(Container.GLIBC)) {
         // Get the configured driver version or use default
         val turnipVersion =

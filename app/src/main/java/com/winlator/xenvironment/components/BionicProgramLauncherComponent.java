@@ -19,6 +19,7 @@ import com.winlator.PrefManager;
 
 import app.gamenative.utils.LsfgVkManager;
 import app.gamenative.utils.X86_64GuestLibs;
+import app.gamenative.utils.X86_64Graphics;
 import com.winlator.box86_64.Box86_64Preset;
 import com.winlator.box86_64.Box86_64PresetManager;
 import com.winlator.container.Container;
@@ -121,6 +122,8 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
                     throw new IllegalStateException(wineInfo.identifier() + " is an ARM build of Wine and cannot run on an x86_64 device; pick an x86_64 Wine for this container");
                 if (!X86_64GuestLibs.isInstalled(environment.getContext()))
                     throw new IllegalStateException("the x86_64 Windows libraries are not installed; run the Windows setup again");
+                if (!X86_64Graphics.isInstalled(environment.getContext(), container.getGraphicsDriver()))
+                    throw new IllegalStateException("the " + container.getGraphicsDriver() + " graphics driver is not downloaded yet; download it from this game's Wine settings or pick another driver");
             }
             else if (wineInfo.isArm64EC())
                 extractEmulatorsDlls();
@@ -377,7 +380,10 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
 
         // Last word on library paths, preloads and the X display for an
         // x86_64 device: everything above names the aarch64 image's libraries.
-        if (x86_64Host) X86_64GuestLibs.applyLaunchEnv(context, imageFs, envVars);
+        if (x86_64Host) {
+            X86_64GuestLibs.applyLaunchEnv(context, imageFs, envVars);
+            X86_64Graphics.applyLaunchEnv(context, container, envVars);
+        }
 
         if (LsfgVkManager.isSupported(container)) {
             LsfgVkManager.ensureRuntimeInstalled(environment.getContext(), container);

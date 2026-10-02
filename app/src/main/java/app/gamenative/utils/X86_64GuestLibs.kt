@@ -1,16 +1,12 @@
 package app.gamenative.utils
 
 import android.content.Context
-import app.gamenative.service.SteamService
 import com.winlator.core.AppUtils
-import com.winlator.core.FileUtils
-import com.winlator.core.TarCompressorUtils
 import com.winlator.core.envvars.EnvVars
 import com.winlator.xconnector.UnixSocketConfig
 import com.winlator.xenvironment.ImageFs
 import java.io.File
 import java.nio.file.Files
-import java.security.MessageDigest
 import timber.log.Timber
 
 /**
@@ -37,22 +33,20 @@ object X86_64GuestLibs {
     const val RELEASE_TAG = "x86_64-guest-libs-20261002-12f9f4d8"
     const val ASSET = "x86_64-guest-libs.tzst"
     const val SHA256 = "c1ebd33b812455b831e855a8f9d10aa0396e04c986ffd0ad4a8c0e9f3bb32c73"
-    private const val URL = "https://github.com/Droidtop/gamenative-tux/releases/download/$RELEASE_TAG/$ASSET"
-    private const val STAMP = ".release"
+    private val release = PinnedReleaseAsset(RELEASE_TAG, ASSET, SHA256, "x86_64-guest-libs", "the x86_64 Windows libraries")
 
     /** True on a device whose primary ABI is x86_64: Wine runs there without box64. */
     @JvmStatic
     fun isX86_64Host(): Boolean = AppUtils.getArchName() == "x86_64"
 
     @JvmStatic
-    fun root(context: Context): File = File(context.filesDir, "x86_64-guest-libs")
+    fun root(context: Context): File = release.root(context)
 
     @JvmStatic
     fun libDir(context: Context): File = File(root(context), "usr/lib")
 
     @JvmStatic
-    fun isInstalled(context: Context): Boolean =
-        File(root(context), STAMP).let { it.isFile && it.readText().trim() == RELEASE_TAG }
+    fun isInstalled(context: Context): Boolean = release.isInstalled(context)
 
     /**
      * Downloads and unpacks the release named by [RELEASE_TAG] unless it is
@@ -60,33 +54,8 @@ object X86_64GuestLibs {
      * can act on when the download or the check fails.
      */
     suspend fun ensureInstalled(context: Context, onProgress: (Float) -> Unit) {
-        if (!isX86_64Host() || isInstalled(context)) return
-        val archive = File(context.filesDir, ASSET)
-        if (!archive.isFile || sha256(archive) != SHA256) {
-            archive.delete()
-            SteamService.fetchFile(URL, archive, onProgress)
-        }
-        val actual = sha256(archive)
-        if (actual != SHA256) {
-            archive.delete()
-            error("the x86_64 Windows libraries did not match their checksum; retry the setup")
-        }
-        val dest = root(context)
-        val staging = File(context.filesDir, "x86_64-guest-libs.tmp")
-        FileUtils.delete(staging)
-        staging.mkdirs()
-        if (!TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, archive, staging)) {
-            FileUtils.delete(staging)
-            error("couldn't unpack the x86_64 Windows libraries")
-        }
-        FileUtils.delete(dest)
-        if (!staging.renameTo(dest)) {
-            FileUtils.delete(staging)
-            error("couldn't install the x86_64 Windows libraries")
-        }
-        File(dest, STAMP).writeText(RELEASE_TAG)
-        archive.delete()
-        Timber.i("X86_64GuestLibs: installed %s", RELEASE_TAG)
+        if (!isX86_64Host()) return
+        release.ensureInstalled(context, onProgress)
     }
 
     /**
@@ -153,19 +122,5 @@ object X86_64GuestLibs {
         if (!system.isFile || Files.isSymbolicLink(link.toPath()) || link.exists()) return
         runCatching { Files.createSymbolicLink(link.toPath(), system.toPath()) }
             .onFailure { Timber.w(it, "X86_64GuestLibs: no libvulkan.so.1 link") }
-    }
-
-    private fun sha256(file: File): String {
-        if (!file.isFile) return ""
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buf = ByteArray(1 shl 16)
-            while (true) {
-                val n = input.read(buf)
-                if (n < 0) break
-                digest.update(buf, 0, n)
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }
