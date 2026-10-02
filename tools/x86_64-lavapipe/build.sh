@@ -82,6 +82,13 @@ while read -r name version filename sha homepage; do
     if [[ -d "$lib" ]]; then
         find "$lib" -maxdepth 1 \( -type f -o -type l \) -name '*.so*' -exec cp -a {} "$WORK/stage/usr/lib/" \;
     fi
+    # The ICD manifest names Termux's own path; the app rewrites
+    # library_path to where it unpacked this archive (X86_64Graphics).
+    icd="$WORK/unpack/$name/data/data/com.termux/files/usr/share/vulkan/icd.d"
+    if [[ -d "$icd" ]]; then
+        mkdir -p "$WORK/stage/usr/share/vulkan/icd.d"
+        cp -a "$icd"/*.json "$WORK/stage/usr/share/vulkan/icd.d/"
+    fi
     printf '%s %s %s\n' "$name" "$version" "$homepage" >> "$WORK/stage/usr/share/doc/x86_64-lavapipe/PACKAGES"
 done < "$WORK/closure"
 
@@ -118,6 +125,7 @@ done < <(find "$WORK/stage/usr/lib" -type f -name '*.so*')
 [[ $missing -eq 0 ]] || exit 1
 [[ -f "$WORK/stage/usr/lib/libvulkan_lvp.so" ]] || { echo "no libvulkan_lvp.so in mesa-vulkan-icd-swrast" >&2; exit 1; }
 [[ -e "$WORK/stage/usr/lib/libvulkan.so.1" ]] || { echo "no libvulkan.so.1 in vulkan-loader-generic" >&2; exit 1; }
+[[ -f "$WORK/stage/usr/share/vulkan/icd.d/lvp_icd.x86_64.json" ]] || { echo "no lvp_icd.x86_64.json in mesa-vulkan-icd-swrast" >&2; exit 1; }
 
 mkdir -p "$(dirname "$OUT")"
 tar -C "$WORK/stage" -I 'zstd -19 -T0' -cf "$OUT" usr
