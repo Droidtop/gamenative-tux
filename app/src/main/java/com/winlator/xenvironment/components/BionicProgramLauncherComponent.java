@@ -18,6 +18,7 @@ import androidx.annotation.NonNull;
 import com.winlator.PrefManager;
 
 import app.gamenative.utils.LsfgVkManager;
+import app.gamenative.utils.X86_64GuestLibs;
 import com.winlator.box86_64.Box86_64Preset;
 import com.winlator.box86_64.Box86_64PresetManager;
 import com.winlator.container.Container;
@@ -112,7 +113,16 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
     public void start() {
         synchronized (lock) {
             stop();
-            if (wineInfo.isArm64EC())
+            if (X86_64GuestLibs.isX86_64Host()) {
+                // An x86_64 Wine runs here as it is; there is nothing to
+                // translate, so no box64 and no emulator DLLs. arm64ec Wine
+                // is ARM code and cannot run on this CPU at all.
+                if (wineInfo.isArm64EC())
+                    throw new IllegalStateException(wineInfo.identifier() + " is an ARM build of Wine and cannot run on an x86_64 device; pick an x86_64 Wine for this container");
+                if (!X86_64GuestLibs.isInstalled(environment.getContext()))
+                    throw new IllegalStateException("the x86_64 Windows libraries are not installed; run the Windows setup again");
+            }
+            else if (wineInfo.isArm64EC())
                 extractEmulatorsDlls();
             else
                 extractBox64Files();
@@ -236,16 +246,19 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         // /data/data/app.gamenative/files, which exists only when this app's
         // package is app.gamenative.
         envVars.put("EVSHIM_BASE_PATH", context.getFilesDir().getAbsolutePath());
-        addBox64EnvVars(envVars, enableBox86_64Logs);
-        envVars.putAll(FEXCorePresetManager.getEnvVars(context, fexcorePreset));
+        boolean x86_64Host = X86_64GuestLibs.isX86_64Host();
+        if (!x86_64Host) {
+            addBox64EnvVars(envVars, enableBox86_64Logs);
+            envVars.putAll(FEXCorePresetManager.getEnvVars(context, fexcorePreset));
 
-        String renderer = GPUInformation.getRenderer(context);
+            String renderer = GPUInformation.getRenderer(context);
 
-        if (renderer.contains("Mali"))
-            envVars.put("BOX64_MMAP32", "0");
+            if (renderer.contains("Mali"))
+                envVars.put("BOX64_MMAP32", "0");
 
-        if (envVars.get("BOX64_MMAP32").equals("1") && !wineInfo.isArm64EC())
-            envVars.put("WRAPPER_DISABLE_PLACED", "1");
+            if (envVars.get("BOX64_MMAP32").equals("1") && !wineInfo.isArm64EC())
+                envVars.put("WRAPPER_DISABLE_PLACED", "1");
+        }
 
         // Setting up essential environment variables for Wine
         envVars.put("HOME", imageFs.home_path);
@@ -362,6 +375,10 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             }
         }
 
+        // Last word on library paths, preloads and the X display for an
+        // x86_64 device: everything above names the aarch64 image's libraries.
+        if (x86_64Host) X86_64GuestLibs.applyLaunchEnv(context, imageFs, envVars);
+
         if (LsfgVkManager.isSupported(container)) {
             LsfgVkManager.ensureRuntimeInstalled(environment.getContext(), container);
             LsfgVkManager.writeConfig(container);
@@ -406,7 +423,12 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
     @NonNull
     private String getFinalCommand(String winePath, String emulator, EnvVars envVars, File binDir, String guestExecutable) {
         String command;
-        if (wineInfo.isArm64EC()) {
+        if (X86_64GuestLibs.isX86_64Host()) {
+            // x86_64 Wine on an x86_64 CPU: started directly (start() has
+            // already refused an arm64ec build here).
+            command = winePath + "/" + guestExecutable;
+        }
+        else if (wineInfo.isArm64EC()) {
             command = winePath + "/" + guestExecutable;
             if (emulator.toLowerCase().equals("fexcore"))
                 envVars.put("HODLL", "libwow64fex.dll");
@@ -667,7 +689,8 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         ImageFs imageFs = ImageFs.find(context);
         File rootDir = imageFs.getRootDir();
         EnvVars envVars = new EnvVars();
-        addBox64EnvVars(envVars, false);
+        boolean x86_64Host = X86_64GuestLibs.isX86_64Host();
+        if (!x86_64Host) addBox64EnvVars(envVars, false);
 
         envVars.put("HOME", imageFs.home_path);
         envVars.put("USER", ImageFs.USER);
@@ -702,6 +725,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
 
         String emulator = container.getEmulator();
         if (this.envVars != null) envVars.putAll(this.envVars);
+        if (x86_64Host) X86_64GuestLibs.applyLaunchEnv(context, imageFs, envVars);
 
         String finalCommand = getFinalCommand(winePath, emulator, envVars, imageFs.getBinDir(), command);
 

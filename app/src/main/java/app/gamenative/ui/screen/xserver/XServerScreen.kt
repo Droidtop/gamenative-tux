@@ -141,6 +141,7 @@ import app.gamenative.utils.SteamTokenLogin
 import app.gamenative.utils.SteamUtils
 import app.gamenative.utils.downloader.WinComponentDownloader
 import app.gamenative.utils.WineProcessSnapshotHelper
+import app.gamenative.utils.X86_64GuestLibs
 import com.posthog.PostHog
 import com.winlator.alsaserver.ALSAClient
 import com.winlator.container.Container
@@ -5406,8 +5407,17 @@ private suspend fun applyGeneralPatches(
 }
 
 private fun refreshComponentsFiles(context: Context) {
+    // The modules and pactl must match the CPU the daemon runs on. An app
+    // that ships an x86_64 set packs it as pulseaudio-gamenative-x86_64.tzst
+    // (droidtop builds one); without it the aarch64 set is all there is.
+    val x86_64Pulse = "pulseaudio-gamenative-x86_64.tzst"
+    val pulseAsset = if (X86_64GuestLibs.isX86_64Host() && context.assets.list("")?.contains(x86_64Pulse) == true) {
+        x86_64Pulse
+    } else {
+        "pulseaudio-gamenative-20260612.tzst"
+    }
     val extractionPairs = listOf(
-        "pulseaudio-gamenative-20260612.tzst" to File(context.filesDir, "pulseaudio")
+        pulseAsset to File(context.filesDir, "pulseaudio")
     )
 
     AssetUtils.extractComponentsWithVersionCheck(
