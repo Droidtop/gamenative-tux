@@ -170,6 +170,15 @@ mkdir -p "$STAGE/usr/lib" "$STAGE/usr/share"
 cp -a "$PREFIX"/lib/*.so* "$STAGE/usr/lib/"
 cp -a "$PREFIX/share/X11" "$STAGE/usr/share/"
 find "$STAGE/usr/lib" -type f -name '*.so*' -exec "$STRIP" --strip-unneeded {} +
+# libtool builds unversioned sonames for Android (libX11.so), the names
+# Termux-built Wine opens. A Wine configured against a glibc-style tree opens
+# the versioned names instead, so both resolve.
+for alias in libX11.so.6 libX11-xcb.so.1 libxcb.so.1 libXext.so.6 libXrender.so.1 libXfixes.so.3 \
+             libXrandr.so.2 libXi.so.6 libXcursor.so.1 libXinerama.so.1 libXcomposite.so.1 \
+             libXxf86vm.so.1 libfreetype.so.6 libfontconfig.so.1; do
+    base="${alias%.so.*}.so"
+    [[ -f "$STAGE/usr/lib/$base" ]] && ln -sf "$base" "$STAGE/usr/lib/$alias"
+done
 
 # Every ELF must be x86-64: an aarch64 or host library here is the exact
 # failure this asset exists to end (Droidtop/tracker#242).
