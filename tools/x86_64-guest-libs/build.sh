@@ -19,8 +19,10 @@
 # The library list and configure flags follow Bliss-Bass/GameNative-x64
 # (scripts/build-x86_64-bionic-libs.sh, GPL-3.0), which runs the same Wine on
 # x86_64 Android tablets. Added here: libandroid-sysvshm (SysV shm for MIT-SHM,
-# from Droidtop/proton-wine-tux android/android_sysvshm) and exec-redirect
-# (exec-redirect.c beside this file).
+# from Droidtop/proton-wine-tux android/android_sysvshm), exec-redirect
+# (exec-redirect.c beside this file) and SDL2, which evshim (the controller
+# shim preloaded into Wine) and winebus.sys's SDL backend dlopen as
+# libSDL2-2.0.so.0; on arm64 it comes from the aarch64 image.
 #
 # Usage: NDK_ROOT=<ndk> SYSVSHM_SRC=<dir with android_sysvshm.c> build.sh <out.tzst>
 set -euo pipefail
@@ -157,6 +159,32 @@ for lib in libXext-1.3.6 libXfixes-6.0.1 libXrender-0.9.11 libXrandr-1.5.4 libXi
            libXinerama-1.1.5 libXcomposite-0.4.6 libXxf86vm-1.1.6; do
     autotools "$lib.tar.xz" "$X/lib/$lib.tar.xz" "${cross[@]}" --enable-malloc0returnsnull=no
 done
+
+# --- SDL2, for game controllers ---
+# Built as a Linux library on bionic, not as SDL's Android port: the Android
+# port reaches its joystick, file and thread code through JNI into SDL's own
+# Java activity, which does not exist in a Wine process (evshim calls
+# SDL_Init(SDL_INIT_JOYSTICK) there). -U__ANDROID__ keeps SDL's sources on
+# their Linux paths; bionic's headers do not depend on it. Only what a
+# controller needs is built (events, joystick with the virtual driver evshim
+# attaches, game controller, haptic); no video or audio, so it links against
+# libc, libm and libdl alone.
+fetch SDL2-2.32.10.tar.gz https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz
+(
+    cd "$(unpack SDL2-2.32.10.tar.gz)"
+    cmake -S . -B build \
+        -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
+        -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_AR="$AR" -DCMAKE_RANLIB="$RANLIB" \
+        -DCMAKE_C_FLAGS="-U__ANDROID__" -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_INSTALL_LIBDIR=lib \
+        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
+        -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF \
+        -DSDL_AUDIO=OFF -DSDL_VIDEO=OFF -DSDL_RENDER=OFF \
+        -DSDL_HIDAPI=ON -DSDL_HIDAPI_JOYSTICK=OFF -DSDL_HIDAPI_LIBUSB=OFF -DSDL_VIRTUAL_JOYSTICK=ON \
+        -DSDL_LIBUDEV=OFF -DSDL_DBUS=OFF -DSDL_IBUS=OFF -DSDL_SYSTEM_ICONV=OFF -DSDL_LIBICONV=OFF
+    cmake --build build -j"$(nproc)"
+    cmake --install build
+)
 
 # --- droidtop's own two ---
 "$CC" -Wall -std=gnu99 -O2 -shared -fPIC -Wl,-z,max-page-size=16384 -I"$SYSVSHM_SRC" \
