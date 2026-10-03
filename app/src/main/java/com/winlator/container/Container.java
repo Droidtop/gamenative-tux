@@ -246,28 +246,64 @@ public class Container {
         this.envVars = envVars != null ? envVars : "";
     }
 
+    /**
+     * Launch-time values laid over this container's own for one launch: an
+     * embedder that runs several games in one prefix can give one of them
+     * another graphics driver, Direct3D translation or emulator version
+     * without a prefix of its own. Keys are this container's JSON keys
+     * ({@link #LAUNCH_OVERRIDE_KEYS}). The getters below answer with an
+     * override while one is set, a setter changes the override rather than the
+     * container's own value, and {@link #saveData()} writes only the
+     * container's own values, so nothing set here outlives the launch.
+     */
+    public static final java.util.List<String> LAUNCH_OVERRIDE_KEYS = java.util.Arrays.asList(
+        "graphicsDriver", "graphicsDriverConfig", "dxwrapper", "dxwrapperConfig", "emulator", "box64Version", "fexcoreVersion");
+    private final java.util.Map<String, String> launchOverrides = new java.util.HashMap<>();
+
+    public void setLaunchOverrides(java.util.Map<String, String> overrides) {
+        launchOverrides.clear();
+        if (overrides == null) return;
+        for (java.util.Map.Entry<String, String> entry : overrides.entrySet()) {
+            if (LAUNCH_OVERRIDE_KEYS.contains(entry.getKey()) && entry.getValue() != null)
+                launchOverrides.put(entry.getKey(), entry.getValue());
+        }
+    }
+
+    public java.util.Map<String, String> getLaunchOverrides() {
+        return java.util.Collections.unmodifiableMap(launchOverrides);
+    }
+
+    private String overridden(String key, String own) {
+        String value = launchOverrides.get(key);
+        return value != null ? value : own;
+    }
+
     public String getGraphicsDriver() {
-        return graphicsDriver;
+        return overridden("graphicsDriver", graphicsDriver);
     }
 
     public void setGraphicsDriver(String graphicsDriver) {
-        this.graphicsDriver = graphicsDriver;
+        if (launchOverrides.containsKey("graphicsDriver")) launchOverrides.put("graphicsDriver", graphicsDriver);
+        else this.graphicsDriver = graphicsDriver;
     }
 
     public String getDXWrapper() {
-        return dxwrapper;
+        return overridden("dxwrapper", dxwrapper);
     }
 
     public void setDXWrapper(String dxwrapper) {
-        this.dxwrapper = dxwrapper;
+        if (launchOverrides.containsKey("dxwrapper")) launchOverrides.put("dxwrapper", dxwrapper);
+        else this.dxwrapper = dxwrapper;
     }
 
     public String getGraphicsDriverConfig() {
-        return this.graphicsDriverConfig;
+        return overridden("graphicsDriverConfig", this.graphicsDriverConfig);
     }
 
     public void setGraphicsDriverConfig(String graphicsDriverConfig) {
-        this.graphicsDriverConfig = graphicsDriverConfig != null ? graphicsDriverConfig : "";
+        String value = graphicsDriverConfig != null ? graphicsDriverConfig : "";
+        if (launchOverrides.containsKey("graphicsDriverConfig")) launchOverrides.put("graphicsDriverConfig", value);
+        else this.graphicsDriverConfig = value;
     }
 
     public String getRendererPresentMode() { return rendererPresentMode; }
@@ -287,11 +323,13 @@ public class Container {
     public void setSfCompatMode(boolean v) { this.sfCompatMode = v; }
 
     public String getDXWrapperConfig() {
-        return dxwrapperConfig;
+        return overridden("dxwrapperConfig", dxwrapperConfig);
     }
 
     public void setDXWrapperConfig(String dxwrapperConfig) {
-        this.dxwrapperConfig = dxwrapperConfig != null ? dxwrapperConfig : "";
+        String value = dxwrapperConfig != null ? dxwrapperConfig : "";
+        if (launchOverrides.containsKey("dxwrapperConfig")) launchOverrides.put("dxwrapperConfig", value);
+        else this.dxwrapperConfig = value;
     }
 
     public String getAudioDriver() {
@@ -474,16 +512,20 @@ public class Container {
 
     public void setBox86Version(String box86Version) { this.box86Version = box86Version; }
 
-    public String getBox64Version() { return box64Version; }
+    public String getBox64Version() { return overridden("box64Version", box64Version); }
 
-    public void setBox64Version(String box64Version) { this.box64Version = box64Version; }
+    public void setBox64Version(String box64Version) {
+        if (launchOverrides.containsKey("box64Version")) launchOverrides.put("box64Version", box64Version);
+        else this.box64Version = box64Version;
+    }
 
     public void setEmulator(String emulator) {
-        this.emulator = emulator;
+        if (launchOverrides.containsKey("emulator")) launchOverrides.put("emulator", emulator);
+        else this.emulator = emulator;
     }
 
     public String getEmulator() {
-        return this.emulator;
+        return overridden("emulator", this.emulator);
     }
 
     public String getBox86Preset() {
@@ -502,9 +544,12 @@ public class Container {
         this.box64Preset = box64Preset;
     }
 
-    public String getFEXCoreVersion() { return this.fexcoreVersion; }
+    public String getFEXCoreVersion() { return overridden("fexcoreVersion", this.fexcoreVersion); }
 
-    public void setFEXCoreVersion(String version) { this.fexcoreVersion = version; }
+    public void setFEXCoreVersion(String version) {
+        if (launchOverrides.containsKey("fexcoreVersion")) launchOverrides.put("fexcoreVersion", version);
+        else this.fexcoreVersion = version;
+    }
 
     public void setFEXCorePreset(String preset) { this.fexcorePreset = preset; }
 
