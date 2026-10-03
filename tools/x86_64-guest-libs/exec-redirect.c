@@ -11,7 +11,7 @@
  * inside box64's process; it has no x86_64 build and no source, so this is
  * the x86_64 counterpart, written for exactly what Wine calls.
  *
- * Two jobs, both narrow:
+ * Three jobs, all narrow:
  *
  *  1. execve/execv/execvp/execvpe/posix_spawn/posix_spawnp: the real call is
  *     made first. Only when it fails with EACCES on an ELF file outside
@@ -29,6 +29,16 @@
  *     REDIRECT_EXEC__PROC_SELF_EXE is set, that value is returned instead. The
  *     launcher sets it for the first process (BionicProgramLauncherComponent);
  *     this file sets it for every process it redirects.
+ *  3. fdsan: bionic aborts a process that closes a file descriptor some other
+ *     owner still holds (a DIR*, a FILE*), and since Android 11 that is the
+ *     default for every process that is not an app (bionic
+ *     __libc_init_fdsan, ANDROID_FDSAN_ERROR_LEVEL_FATAL). Wine and the
+ *     libraries it loads were written for glibc, where such a close is a
+ *     harmless bug, and one of them killed a game on the BlueStacks rig the
+ *     moment DXVK made its swapchain ("fdsan: attempted to close file
+ *     descriptor 409, expected to be unowned, actually owned by DIR*",
+ *     Droidtop/tracker#242). Every process this preload is loaded into
+ *     reports the first such close in logcat and carries on.
  *
  * No allocation on the exec paths: they can run in a forked child.
  *
@@ -289,4 +299,15 @@ char *realpath(const char *path, char *resolved) {
     }
     free(r);
     return strdup(v);
+}
+
+/*
+ * Job 3 above. android_fdsan_set_error_level is libc's from API 29; this file
+ * is built for API 26, so it is looked up, and an older device (where fdsan
+ * does not exist) simply has nothing to change.
+ */
+__attribute__((constructor)) static void report_fdsan_once(void) {
+    typedef int (*set_level_fn)(int);
+    set_level_fn set_level = (set_level_fn)dlsym(RTLD_DEFAULT, "android_fdsan_set_error_level");
+    if (set_level) set_level(1 /* ANDROID_FDSAN_ERROR_LEVEL_WARN_ONCE */);
 }
