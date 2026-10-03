@@ -20,7 +20,12 @@
  *     changes nothing.
  *  2. readlink/readlinkat/realpath of /proc/self/exe: a program started through
  *     the linker sees the linker as its own executable, and Wine derives its
- *     install directory from that. When the real answer is the linker and
+ *     install directory from that: the loader's load_ntdll() takes
+ *     realpath("/proc/self/exe") and opens ../lib/wine/x86_64-unix/ntdll.so
+ *     beside it, and ntdll's init_paths() takes the same realpath as bin_dir,
+ *     where it finds wineserver and the loader it starts again (Wine 9.0
+ *     loader/main.c, dlls/ntdll/unix/loader.c). When the real answer is the
+ *     linker, under either of its names (is_linker), and
  *     REDIRECT_EXEC__PROC_SELF_EXE is set, that value is returned instead. The
  *     launcher sets it for the first process (BionicProgramLauncherComponent);
  *     this file sets it for every process it redirects.
@@ -210,9 +215,29 @@ int posix_spawnp(pid_t *pid, const char *file, const posix_spawn_file_actions_t 
     return rc;
 }
 
+/*
+ * Whether a /proc/self/exe answer is the linker. The kernel reports the
+ * resolved file, and from Android 10 on /system/bin/linker64 is a symlink to
+ * the runtime APEX's copy (/apex/com.android.runtime/bin/linker64), so the
+ * answer is that path, not LINKER. Comparing with LINKER alone never matched
+ * there, and Wine looked for ntdll.so under /apex/com.android.runtime/lib
+ * (Droidtop/tracker#242, BlueStacks Android 13).
+ */
+static int is_linker(const char *path) {
+    static char canonical[PATH_MAX];
+    static int resolved;
+    if (strcmp(path, LINKER) == 0) return 1;
+    if (!resolved) {
+        realpath_fn real_realpath = (realpath_fn)next("realpath");
+        if (!real_realpath || !real_realpath(LINKER, canonical)) canonical[0] = '\0';
+        resolved = 1;
+    }
+    return canonical[0] && strcmp(path, canonical) == 0;
+}
+
 /* The executable a redirected process should see, or NULL to keep the real answer. */
 static const char *self_exe_override(const char *real_answer) {
-    if (!real_answer || strcmp(real_answer, LINKER) != 0) return NULL;
+    if (!real_answer || !is_linker(real_answer)) return NULL;
     const char *v = getenv(SELF_EXE_VAR);
     return v && *v ? v : NULL;
 }
