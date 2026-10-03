@@ -104,6 +104,8 @@ import app.gamenative.service.SteamService
 import app.gamenative.utils.ManifestComponentHelper.VersionOptionList
 import app.gamenative.utils.ManifestRepository
 import app.gamenative.utils.PaddingUtils
+import app.gamenative.utils.X86_64Graphics
+import app.gamenative.utils.X86_64GuestLibs
 import com.winlator.contents.ContentProfile
 import com.alorma.compose.settings.ui.SettingsGroup
 import com.alorma.compose.settings.ui.SettingsMenuLink
@@ -403,8 +405,15 @@ fun ContainerConfigDialog(
         val installedWrapperDrivers = availability?.installedDrivers.orEmpty()
         val installedWrappers = installedLists?.wrapper.orEmpty()
 
+        // On an x86_64 device none of the Wrapper drivers exist: the list is the
+        // x86_64 one, so the dialog shows the prefix's real driver instead of
+        // falling back to its first entry and marking itself changed on open.
         val bionicGraphicsDriversMerged = remember(bionicGraphicsDrivers, installedWrappers) {
-            (bionicGraphicsDrivers + installedWrappers.map { "Wrapper-$it" }).distinct()
+            if (X86_64GuestLibs.isX86_64Host()) {
+                X86_64Graphics.LABELS
+            } else {
+                (bionicGraphicsDrivers + installedWrappers.map { "Wrapper-$it" }).distinct()
+            }
         }
 
         val dxvkOptions = remember(dxvkVersionsBase, installedDxvk, manifestDxvk) {

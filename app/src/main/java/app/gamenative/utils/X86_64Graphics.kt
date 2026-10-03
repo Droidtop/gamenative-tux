@@ -28,6 +28,22 @@ object X86_64Graphics {
     @JvmField
     val DRIVERS: List<String> = listOf(LAVAPIPE, NONE)
 
+    /**
+     * The name [id] is shown with. What follows the name in parentheses is a
+     * description that `StringUtils.parseIdentifier` drops, so a label parses
+     * back to its id the way gamenative's own driver lists do.
+     */
+    @JvmStatic
+    fun label(id: String): String = when (id) {
+        LAVAPIPE -> "Lavapipe (software Vulkan)"
+        NONE -> "None (2D and GDI only)"
+        else -> id
+    }
+
+    /** [DRIVERS] as their labels, in the same order: the list the prefix dialog offers on x86_64. */
+    @JvmField
+    val LABELS: List<String> = DRIVERS.map(::label)
+
     /** Release of Droidtop/gamenative-tux that carries the asset; see .github/workflows/x86_64-lavapipe.yml. */
     const val LAVAPIPE_TAG = "x86_64-lavapipe-20261002-9ec0ef03"
     const val LAVAPIPE_SHA256 = "e2fa1476066e1ed01923446a14cae089495f514f9fde1e5233b58a383fca9edf"
