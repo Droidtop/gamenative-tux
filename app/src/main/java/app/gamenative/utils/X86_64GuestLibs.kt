@@ -25,14 +25,15 @@ import timber.log.Timber
  *
  * The same release carries `libexec-redirect.so`, the x86_64 counterpart of the
  * closed aarch64 `libredirect-bionic-wx.so` for the one job Wine needs from it
- * (starting its own children where Android refuses exec() of app files), and
- * `libandroid-sysvshm.so`.
+ * (starting its own children where Android refuses exec() of app files),
+ * `libandroid-sysvshm.so`, and GnuTLS (with GMP and Nettle), which Wine's
+ * bcrypt, crypt32 and secur32 open for their public-key work.
  */
 object X86_64GuestLibs {
     /** Release of Droidtop/gamenative-tux that carries the asset; see .github/workflows/x86_64-guest-libs.yml. */
-    const val RELEASE_TAG = "x86_64-guest-libs-20261003-996fdcb1"
+    const val RELEASE_TAG = "x86_64-guest-libs-20261003-23a9dbe9"
     const val ASSET = "x86_64-guest-libs.tzst"
-    const val SHA256 = "b0588fec87a624d1c7310214bf85b25d589871a2eabdca2807cc3476ea9daf96"
+    const val SHA256 = "acb50f08a12ff87f2109eeaec49c2890249357bdff80b7ca6853c19f809643c3"
     private val release = PinnedReleaseAsset(RELEASE_TAG, ASSET, SHA256, "x86_64-guest-libs", "the x86_64 Windows libraries")
 
     /** True on a device whose primary ABI is x86_64: Wine runs there without box64. */
