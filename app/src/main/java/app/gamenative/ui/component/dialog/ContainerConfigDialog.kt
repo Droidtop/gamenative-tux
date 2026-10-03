@@ -69,6 +69,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
@@ -1233,6 +1234,7 @@ fun ContainerConfigDialog(
             ),
             content = {
                 val scrollState = rememberScrollState()
+                val dialogFocusManager = LocalFocusManager.current
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -1253,7 +1255,13 @@ fun ContainerConfigDialog(
                             },
                             actions = {
                                 IconButton(
-                                    onClick = { onSave(config) },
+                                    // One tap saves whatever has focus: the field
+                                    // being typed in lets go (its text is already
+                                    // in config) and the keyboard closes with it.
+                                    onClick = {
+                                        dialogFocusManager.clearFocus(force = true)
+                                        onSave(config)
+                                    },
                                     content = { Icon(Icons.Default.Save, null) },
                                 )
                             },
