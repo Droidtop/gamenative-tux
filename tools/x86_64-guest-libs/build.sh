@@ -22,7 +22,11 @@
 # from Droidtop/proton-wine-tux android/android_sysvshm), exec-redirect
 # (exec-redirect.c beside this file) and SDL2, which evshim (the controller
 # shim preloaded into Wine) and winebus.sys's SDL backend dlopen as
-# libSDL2-2.0.so.0; on arm64 it comes from the aarch64 image.
+# libSDL2-2.0.so.0; on arm64 it comes from the aarch64 image. And GnuTLS with
+# GMP and Nettle: Wine's bcrypt, crypt32 and secur32 dlopen libgnutls for every
+# public-key operation (certificate chains, TLS, signatures). Without it Wine
+# logs "failed to load libgnutls, no support for encryption" and a game whose
+# start-up checks a certificate gets an error where Windows succeeds.
 #
 # Usage: NDK_ROOT=<ndk> SYSVSHM_SRC=<dir with android_sysvshm.c> build.sh <out.tzst>
 set -euo pipefail
@@ -186,6 +190,29 @@ fetch SDL2-2.32.10.tar.gz https://github.com/libsdl-org/SDL/releases/download/re
     cmake --install build
 )
 
+# --- GnuTLS, for Wine's bcrypt, crypt32 and secur32 ---
+# Portable C only (no assembly, no CPU-specific acceleration): these builds
+# have to work on every x86_64 device, and the public-key work Wine hands to
+# GnuTLS is a handful of operations per connection or certificate.
+fetch gmp-6.3.0.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz
+autotools gmp-6.3.0.tar.xz unused "${cross[@]}" --enable-shared --disable-assembly --disable-cxx
+
+fetch nettle-3.10.1.tar.gz https://ftp.gnu.org/gnu/nettle/nettle-3.10.1.tar.gz
+autotools nettle-3.10.1.tar.gz unused "${cross[@]}" --libdir="$PREFIX/lib" --disable-assembler \
+    --disable-documentation --disable-openssl --disable-fat
+
+# The trust store GnuTLS falls back to is Android's own CA directory; Wine
+# keeps its own root store for Windows programs either way.
+fetch gnutls-3.8.9.tar.xz https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.9.tar.xz \
+    https://mirrors.dotsrc.org/gcrypt/gnutls/v3.8/gnutls-3.8.9.tar.xz
+autotools gnutls-3.8.9.tar.xz unused "${cross[@]}" \
+    --with-included-libtasn1 --with-included-unistring --without-p11-kit --without-idn \
+    --without-tpm --without-tpm2 --without-brotli --without-zstd --without-zlib \
+    --disable-doc --disable-manpages --disable-tests --disable-tools --disable-cxx --disable-nls \
+    --disable-guile --disable-libdane --disable-ktls --disable-hardware-acceleration \
+    --with-default-trust-store-dir=/system/etc/security/cacerts \
+    GMP_CFLAGS="-I$PREFIX/include" GMP_LIBS="-L$PREFIX/lib -lgmp"
+
 # --- droidtop's own two ---
 "$CC" -Wall -std=gnu99 -O2 -shared -fPIC -Wl,-z,max-page-size=16384 -I"$SYSVSHM_SRC" \
     -o "$PREFIX/lib/libandroid-sysvshm.so" "$SYSVSHM_SRC/android_sysvshm.c"
@@ -203,10 +230,28 @@ find "$STAGE/usr/lib" -type f -name '*.so*' -exec "$STRIP" --strip-unneeded {} +
 # the versioned names instead, so both resolve.
 for alias in libX11.so.6 libX11-xcb.so.1 libxcb.so.1 libXext.so.6 libXrender.so.1 libXfixes.so.3 \
              libXrandr.so.2 libXi.so.6 libXcursor.so.1 libXinerama.so.1 libXcomposite.so.1 \
-             libXxf86vm.so.1 libfreetype.so.6 libfontconfig.so.1; do
+             libXxf86vm.so.1 libfreetype.so.6 libfontconfig.so.1 libgnutls.so.30; do
     base="${alias%.so.*}.so"
-    [[ -f "$STAGE/usr/lib/$base" ]] && ln -sf "$base" "$STAGE/usr/lib/$alias"
+    # A library that already carries the versioned name keeps it: linking it
+    # to the unversioned name, itself a link to it, would make a loop.
+    if [[ -e "$STAGE/usr/lib/$base" && ! -e "$STAGE/usr/lib/$alias" ]]; then
+        ln -s "$base" "$STAGE/usr/lib/$alias"
+    fi
 done
+
+# Every library must load: each NEEDED name has to be here or in Android.
+system=" libc.so libm.so libdl.so liblog.so libandroid.so "
+here=" $(cd "$STAGE/usr/lib" && ls | tr '\n' ' ') "
+missing=0
+while IFS= read -r f; do
+    while IFS= read -r needed; do
+        if [[ "$here" != *" $needed "* && "$system" != *" $needed "* ]]; then
+            echo "$(basename "$f") needs $needed, which nothing provides" >&2
+            missing=1
+        fi
+    done < <(readelf -d "$f" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')
+done < <(find "$STAGE/usr/lib" -type f -name '*.so*')
+[[ $missing -eq 0 ]] || exit 1
 
 # Every ELF must be x86-64: an aarch64 or host library here is the exact
 # failure this asset exists to end (Droidtop/tracker#242).
