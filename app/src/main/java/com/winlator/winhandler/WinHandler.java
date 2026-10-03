@@ -141,6 +141,8 @@ public class WinHandler {
         System.loadLibrary("evshim");
     }
 
+    /** Maps the controller files under [basePath]/gamepad_shm natively; false if a slot could not be mapped. */
+    private static native boolean attachSharedMemory(String basePath);
     private static native void notifyStateChanged(int playerIndex);
     public static native int waitForRumble(int idx, int lastSeq);
     public static native void rumbleTeardown(int idx);
@@ -747,6 +749,9 @@ public class WinHandler {
             } catch (UnknownHostException e2) {
             }
         }
+        // The native side needs the same files for its futex words; without
+        // them a rumble poller's wait returns at once and spins a core.
+        boolean sharedMemory = attachSharedMemory(activity.getApplicationContext().getFilesDir().getAbsolutePath());
         refreshControllerMappings();
         this.running = true;
         activeInstance = this;
@@ -768,7 +773,11 @@ public class WinHandler {
             } catch (IOException ignored) {
             }
         });
-        startRumblePoller();
+        if (sharedMemory) {
+            startRumblePoller();
+        } else {
+            Log.e(TAG, "Controller shared memory is not mapped; rumble is off for this session");
+        }
     }
 
     private void startRumblePoller() {
