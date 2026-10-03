@@ -50,9 +50,16 @@ object ContainerUtils {
         // arm64ec build is ARM code and cannot run there, and none of the Adreno
         // or Wrapper drivers below exist for x86. Software Vulkan is the one
         // Vulkan driver every x86_64 device can load (X86_64Graphics).
+        // The Wine is Proton 10 (upstream's arm64 default is Proton 10 too):
+        // GameNative's x86_64 Android builds fix Wine's address space at 39
+        // bits for box64 (proton-wine android/patches/x86_64/
+        // dlls_ntdll_unix_virtual_c.patch), and Proton 9's ntdll then sizes its
+        // page table from that fixed limit and stops on an assertion at the
+        // first DLL above it on a 47-bit x86_64 kernel. From Wine 10 ntdll
+        // sizes it from the host's real limit (get_host_addr_space_limit).
         if (X86_64GuestLibs.isX86_64Host()) {
             DefaultVersion.VARIANT = Container.BIONIC
-            DefaultVersion.WINE_VERSION = "proton-9.0-x86_64"
+            DefaultVersion.WINE_VERSION = "proton-10.0-4-x86_64-1"
             DefaultVersion.DEFAULT_GRAPHICS_DRIVER = X86_64Graphics.LAVAPIPE
             DefaultVersion.DXVK = "2.6.1-gplasync"
             DefaultVersion.VKD3D = "2.14.1"
