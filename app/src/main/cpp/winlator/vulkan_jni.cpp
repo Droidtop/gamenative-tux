@@ -92,12 +92,13 @@ Java_com_winlator_renderer_VulkanRenderer_nativeUpdateWindowContent(
     if (px && env->GetDirectBufferCapacity(buf)>=(jlong)w*h*4)
         r->updateWindowContent(id,px,w,h,stride,x,y);
 }
-extern "C" JNIEXPORT void JNICALL
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeUpdateWindowContentAHB(
     JNIEnv*, jobject, jlong handle, jlong id, jlong ahbPtr, jshort w, jshort h, jint x, jint y)
 {
     auto* r=reinterpret_cast<VulkanRendererContext*>(handle);
-    if (r&&ahbPtr) r->updateWindowContentAHB(id,reinterpret_cast<AHardwareBuffer*>(ahbPtr),w,h,x,y);
+    if (!r||!ahbPtr) return JNI_TRUE;
+    return r->updateWindowContentAHB(id,reinterpret_cast<AHardwareBuffer*>(ahbPtr),w,h,x,y) ? JNI_TRUE : JNI_FALSE;
 }
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeEnableXrTarget(JNIEnv*, jobject, jlong handle) {

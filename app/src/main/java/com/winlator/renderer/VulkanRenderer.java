@@ -135,7 +135,8 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     private native void nativeDestroy(long handle);
     private native void nativeUpdateWindowContent(long handle, long id, java.nio.ByteBuffer pixels,
         short width, short height, short stride, int x, int y);
-    private native void nativeUpdateWindowContentAHB(long handle, long id, long ahbPtr,
+    /** False when this device's Vulkan cannot import the buffer; the caller then uploads its pixels. */
+    private native boolean nativeUpdateWindowContentAHB(long handle, long id, long ahbPtr,
         short width, short height, int x, int y);
     private native void nativeSetTransform(long handle, float ox, float oy, float sx, float sy);
     private native void nativeSetPointerPos(long handle, short x, short y);
@@ -495,19 +496,19 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
                         nativeScanoutSetBuffer(nativeHandle, ahbPtr,
                             rx, ry, pixmap.width, pixmap.height, fenceFd);
                         g.lock();
-                    } else {
-                        if (xrFrameBridge != null && xrTargetAhbPtr == 0) {
-                            // The immersive session samples this AHB directly; skipping the
-                            // native update leaves the render loop parked on its condvar, so
-                            // no scene is composited or presented to the invisible surface.
-                            // Only used when the scene target could not be created.
-                            xrFrameBridge.onScanoutBuffer(ahbPtr, pixmap.width, pixmap.height);
-                            return;
-                        }
-                        nativeUpdateWindowContentAHB(nativeHandle, targetId, ahbPtr,
-                            pixmap.width, pixmap.height, rx, ry);
+                        return;
                     }
-                    return;
+                    if (xrFrameBridge != null && xrTargetAhbPtr == 0) {
+                        // The immersive session samples this AHB directly; skipping the
+                        // native update leaves the render loop parked on its condvar, so
+                        // no scene is composited or presented to the invisible surface.
+                        // Only used when the scene target could not be created.
+                        xrFrameBridge.onScanoutBuffer(ahbPtr, pixmap.width, pixmap.height);
+                        return;
+                    }
+                    if (nativeUpdateWindowContentAHB(nativeHandle, targetId, ahbPtr,
+                            pixmap.width, pixmap.height, rx, ry)) return;
+                    // This device's Vulkan cannot import the buffer: its pixels go up below.
                 }
                 java.nio.ByteBuffer vd = g.getVirtualData();
                 if (vd != null) {
@@ -559,11 +560,12 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
                             xServer.setRenderingEnabled(false);
                             xRenderingPausedForScanout = true;
                         }
-                    } else if (!scanoutNow) {
-                        nativeUpdateWindowContentAHB(handle, drawableId, ahbPtr,
-                            drawable.width, drawable.height, rx, ry);
+                        return;
                     }
-                    return;
+                    if (scanoutNow) return;
+                    if (nativeUpdateWindowContentAHB(handle, drawableId, ahbPtr,
+                            drawable.width, drawable.height, rx, ry)) return;
+                    // This device's Vulkan cannot import the buffer: its pixels go up below.
                 }
                 java.nio.ByteBuffer vd = g.getVirtualData();
                 if (vd != null) {

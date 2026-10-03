@@ -138,7 +138,8 @@ public:
     void setTransform(float ox, float oy, float sx, float sy);
     void updatePointerPosition(short x, short y);
     void updateWindowContent(int64_t id, void* pixels, short w, short h, short stride, int x, int y);
-    void updateWindowContentAHB(int64_t id, AHardwareBuffer* ahb, short w, short h, int x, int y);
+    // False when this device's Vulkan cannot import the buffer (then and from then on).
+    bool updateWindowContentAHB(int64_t id, AHardwareBuffer* ahb, short w, short h, int x, int y);
     void updateCursorImage(void* pixels, short w, short h, short hotX, short hotY);
     void setCursorVisible(bool visible);
     void setRenderList(const int64_t* ids, const int* xs, const int* ys, int count);
@@ -232,6 +233,10 @@ private:
 
     std::unordered_map<AHardwareBuffer*, WinTex>              ahbImportCache;
     std::unordered_map<int64_t, std::vector<AHardwareBuffer*>> windowAhbs;
+    // Set by the first failed import: every window buffer has the same format
+    // and usage, so the device cannot import any of them; their pixels are
+    // uploaded instead (updateWindowContent).
+    bool ahbImportUnsupported = false;
 
     std::vector<WinTex>    deleteQueue;
     std::vector<RenderEntry> renderList;

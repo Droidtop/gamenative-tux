@@ -1252,20 +1252,22 @@ void VulkanRendererContext::updateWindowContent(int64_t id, void* px, short w, s
     needsRender.store(true); dirtyCV.notify_one();
 }
 
-void VulkanRendererContext::updateWindowContentAHB(int64_t id, AHardwareBuffer* ahb, short, short, int, int) {
-    if (!ahb) return;
+bool VulkanRendererContext::updateWindowContentAHB(int64_t id, AHardwareBuffer* ahb, short, short, int, int) {
+    if (!ahb) return true;
     std::lock_guard<std::mutex> lk(renderMutex);
-
-
-
-
+    if (ahbImportUnsupported) return false;
 
     auto cit = ahbImportCache.find(ahb);
     if (cit == ahbImportCache.end()) {
         WinTex tmp{};
         if (!importAHBToWinTex(tmp, ahb)) {
-            RLOG_E("updateWindowContentAHB: import failed for id=%" PRId64, id);
-            return;
+            // Once, not per frame: BlueStacks' Vulkan (Mesa) rejects the
+            // window buffers ("android_format_is_yuv: unhandled format: 5")
+            // and logged this 624 times in a minute while the screen stayed
+            // black (Droidtop/tracker#242). The caller uploads the pixels.
+            ahbImportUnsupported = true;
+            RLOG_E("updateWindowContentAHB: import failed for id=%" PRId64 "; uploading window pixels from now on", id);
+            return false;
         }
         AHardwareBuffer_acquire(ahb);
         ahbImportCache[ahb] = tmp;
@@ -1292,6 +1294,7 @@ void VulkanRendererContext::updateWindowContentAHB(int64_t id, AHardwareBuffer* 
         src.needsTransition = false;
     }
     needsRender.store(true); dirtyCV.notify_one();
+    return true;
 }
 
 void VulkanRendererContext::setRenderList(const int64_t* ids, const int* xs, const int* ys, int count) {
