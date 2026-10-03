@@ -44,10 +44,13 @@ class PinnedReleaseAsset(
             archive.delete()
             SteamService.fetchFile(url, archive, onProgress)
         }
-        if (sha256(archive) != sha256) {
+        val actual = sha256(archive)
+        if (actual != sha256) {
             archive.delete()
+            Timber.w("PinnedReleaseAsset: %s SHA-256 %s does not match the pinned %s", tag, actual, sha256)
             error("the download of $label failed its checksum; retry the setup")
         }
+        Timber.i("PinnedReleaseAsset: %s SHA-256 %s matches the pin", tag, actual)
         val dest = root(context)
         val staging = File(context.filesDir, "$dirName.tmp")
         FileUtils.delete(staging)
