@@ -30,9 +30,9 @@ import timber.log.Timber
  */
 object X86_64GuestLibs {
     /** Release of Droidtop/gamenative-tux that carries the asset; see .github/workflows/x86_64-guest-libs.yml. */
-    const val RELEASE_TAG = "x86_64-guest-libs-20261002-12f9f4d8"
+    const val RELEASE_TAG = "x86_64-guest-libs-20261003-95b81e89"
     const val ASSET = "x86_64-guest-libs.tzst"
-    const val SHA256 = "c1ebd33b812455b831e855a8f9d10aa0396e04c986ffd0ad4a8c0e9f3bb32c73"
+    const val SHA256 = "a70ed2404f859b94050b899edfc3f9870e6744acde217513cb9c1c558acb1970"
     private val release = PinnedReleaseAsset(RELEASE_TAG, ASSET, SHA256, "x86_64-guest-libs", "the x86_64 Windows libraries")
 
     /** True on a device whose primary ABI is x86_64: Wine runs there without box64. */
