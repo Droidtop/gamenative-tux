@@ -1,6 +1,6 @@
 name: Sync upstream
 
-# Real, daily upstream sync -- keeps this fork's master merged with
+# Real upstream sync -- keeps this fork's master merged with
 # utkarshdalal/GameNative's own master, so the real native-Linux work
 # this fork adds (see README) doesn't silently drift out of date with
 # upstream's own real fixes/driver updates.
@@ -17,9 +17,12 @@ name: Sync upstream
 # Personal Access Token as a repo secret (e.g. SYNC_PAT) and swap the
 # checkout/push steps below to use it instead of GITHUB_TOKEN.
 
+# Dispatch only since 2026-10-09 (Droidtop/tracker#325): the fork has diverged
+# (it deleted upstream's signed-release workflows and Play Integrity and
+# changed app code), so the daily merge conflicted in about a dozen files on
+# every run and nobody could resolve it unattended. A person merges upstream
+# by hand and can run this to try again.
 on:
-  schedule:
-    - cron: '17 9 * * *'
   workflow_dispatch:
 
 permissions:
